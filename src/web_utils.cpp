@@ -19,6 +19,7 @@
 #include <ArduinoJson.h>
 #include "configuration.h"
 #include "web_utils.h"
+#include "board_pinout.h"
 #include "display.h"
 #include "utils.h"
 
@@ -86,6 +87,25 @@ namespace WEB_Utils {
         }
 
         request->send(200, "application/json", fileContent);
+    }
+
+    // Reports which optional features are actually compiled into this board's firmware,
+    // so the (board-agnostic) web UI can hide/disable controls for features that don't exist
+    // on the connected device instead of silently accepting settings that can never apply.
+    // Add one line here (mirroring the #ifdef already used elsewhere for that feature) plus a
+    // matching data-requires-capability attribute in index.html to gate a new control.
+    void handleCapabilities(AsyncWebServerRequest *request) {
+        JsonDocument data;
+
+        #ifdef HAS_BT_CLASSIC
+            data["hasBTClassic"] = true;
+        #else
+            data["hasBTClassic"] = false;
+        #endif
+
+        String buffer;
+        serializeJson(data, buffer);
+        request->send(200, "application/json", buffer);
     }
 
     void handleReceivedPackets(AsyncWebServerRequest *request) {
@@ -174,6 +194,7 @@ namespace WEB_Utils {
         Config.sendAltitude                     = request->hasParam("sendAltitude", true);
         Config.disableGPS                       = request->hasParam("disableGPS", true);
         Config.simplifiedTrackerMode            = request->hasParam("simplifiedTrackerMode", true);
+        Config.logLevel                         = getParamIntSafe("logLevel", Config.logLevel);
 
         //  Display
         Config.display.ecoMode                  = request->hasParam("display.ecoMode", true);
@@ -187,7 +208,11 @@ namespace WEB_Utils {
         Config.bluetooth.active                 = request->hasParam("bluetooth.active", true);
         if (Config.bluetooth.active) {
             Config.bluetooth.deviceName         = getParamStringSafe("bluetooth.deviceName", Config.bluetooth.deviceName);
-            Config.bluetooth.useBLE             = request->hasParam("bluetooth.useBLE", true);
+            #ifdef HAS_BT_CLASSIC
+                Config.bluetooth.useBLE         = request->hasParam("bluetooth.useBLE", true);
+            #else
+                Config.bluetooth.useBLE         = true; // fixed as BLE - board has no Classic Bluetooth radio
+            #endif
             Config.bluetooth.useKISS            = request->hasParam("bluetooth.useKISS", true);
         }
 
@@ -320,6 +345,7 @@ namespace WEB_Utils {
         //server.on("/received-packets.json", HTTP_GET, handleReceivedPackets);
         server.on("/configuration.json", HTTP_GET, handleReadConfiguration);
         server.on("/configuration.json", HTTP_POST, handleWriteConfiguration);
+        server.on("/capabilities", HTTP_GET, handleCapabilities);
         server.on("/action", HTTP_POST, handleAction);
         server.on("/style.css", HTTP_GET, handleStyle);
         server.on("/script.js", HTTP_GET, handleScript);

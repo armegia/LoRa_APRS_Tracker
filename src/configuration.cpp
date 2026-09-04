@@ -121,6 +121,7 @@ bool Configuration::writeFile() {
         data["other"]["sendAltitude"]               = sendAltitude;
         data["other"]["disableGPS"]                 = disableGPS;
         data["other"]["email"]                      = email;
+        data["other"]["logLevel"]                   = logLevel;
 
         serializeJson(data, configFile);
         configFile.close();
@@ -273,7 +274,8 @@ bool Configuration::readFile() {
             data["other"]["standingUpdateTime"].isNull() ||
             data["other"]["sendAltitude"].isNull() ||
             data["other"]["disableGPS"].isNull() ||
-            data["other"]["email"].isNull()) needsRewrite = true;
+            data["other"]["email"].isNull() ||
+            data["other"]["logLevel"].isNull()) needsRewrite = true;
         simplifiedTrackerMode           = data["other"]["simplifiedTrackerMode"] | false;
         sendCommentAfterXBeacons        = data["other"]["sendCommentAfterXBeacons"] | 10;
         path                            = data["other"]["path"] | "WIDE1-1";
@@ -283,6 +285,7 @@ bool Configuration::readFile() {
         sendAltitude                    = data["other"]["sendAltitude"] | true;
         disableGPS                      = data["other"]["disableGPS"] | false;
         email                           = data["other"]["email"] | "";
+        logLevel                        = data["other"]["logLevel"] | (int)logging::LoggerLevel::LOGGER_LEVEL_INFO;
 
         configFile.close();
 
@@ -406,6 +409,7 @@ void Configuration::setDefaultValues() {
     sendAltitude                    = true;
     disableGPS                      = false;
     email                           = "";
+    logLevel                        = (int)logging::LoggerLevel::LOGGER_LEVEL_INFO;
 
     Serial.println("New Data Created... All is Written!");
 }

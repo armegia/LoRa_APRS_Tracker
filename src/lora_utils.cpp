@@ -260,6 +260,7 @@ namespace LoRa_Utils {
                         receivedLoraPacket.rssi       = radio.getRSSI();
                         receivedLoraPacket.snr        = radio.getSNR();
                         receivedLoraPacket.freqError  = radio.getFrequencyError();
+                        logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "LoRa Rx", "RSSI: %d dBm / SNR: %.2f dB / FreqError: %d Hz", receivedLoraPacket.rssi, receivedLoraPacket.snr, receivedLoraPacket.freqError);
                     }
                 } else {
                     Serial.print(F("Rx failed, code "));   // 7 = CRC mismatch

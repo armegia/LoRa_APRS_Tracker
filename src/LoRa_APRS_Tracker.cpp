@@ -69,7 +69,7 @@ ____________________________________________________________________*/
 #endif
 
 
-String      versionDate             = "2026-04-22";
+String      versionDate             = "2026-09-04";
 String      versionNumber           = "2.4.3.2";
 Configuration                       Config;
 HardwareSerial                      gpsSerial(1);
@@ -119,16 +119,13 @@ uint32_t    lastGPSTime             = 0;
 APRSPacket                          lastReceivedPacket;
 
 logging::Logger                     logger;
-//#define DEBUG
 
 extern bool gpsIsActive;
 
 void setup() {
     Serial.begin(115200);
 
-    #ifndef DEBUG
-        logger.setDebugLevel(logging::LoggerLevel::LOGGER_LEVEL_INFO);
-    #endif
+    logger.setDebugLevel(static_cast<logging::LoggerLevel::Value>(Config.logLevel));
 
     POWER_Utils::setup();
     displaySetup();

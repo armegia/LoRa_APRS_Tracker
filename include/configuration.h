@@ -142,6 +142,7 @@ public:
     int     standingUpdateTime;
     bool    sendAltitude;
     bool    disableGPS;
+    int     logLevel;
 
     void setDefaultValues();
     bool writeFile();

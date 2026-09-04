@@ -292,8 +292,25 @@
                                                 class="form-label"
                                                 >Simplified Tracker Mode<small> (Disables Buttons + Menu and only sends GPS Beacon)</small></label
                                             >
-                                        </div>  
-                                    </div>                                    
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row mt-3">
+                                    <div class="col-6">
+                                        <div class="form-floating">
+                                            <select
+                                                name="logLevel"
+                                                id="logLevel"
+                                                class="form-select"
+                                            >
+                                                <option value="3">Error</option>
+                                                <option value="4">Warn</option>
+                                                <option value="6">Info</option>
+                                                <option value="7">Debug</option>
+                                            </select>
+                                            <label for="logLevel">Serial Log Level<small> (applies after next reboot)</small></label>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -444,7 +461,7 @@
                                     </div>
                                 </div>
                                 <div class="row mt-3">
-                                    <div class="col-6">
+                                    <div class="col-6" data-requires-capability="hasBTClassic">
                                         <div class="form-check form-switch">
                                             <input
                                                 type="checkbox"
@@ -458,6 +475,9 @@
                                                 >Enable: BLE  / Disable: BT Classic</label
                                             >
                                         </div>
+                                    </div>
+                                    <div class="col-6" data-requires-capability-fallback="hasBTClassic" hidden>
+                                        <small class="text-muted">This board has no Classic Bluetooth radio &mdash; BLE only.</small>
                                     </div>
                                     <div class="col-6">
                                         <div class="form-check form-switch">
