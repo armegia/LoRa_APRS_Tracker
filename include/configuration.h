@@ -116,6 +116,9 @@ public:
     String  deviceName;
     bool    useBLE;
     bool    useKISS;
+    // Set by the "Clear BLE bonds" web action, consumed once by BLE_Utils::setup() on the next
+    // boot. Not exposed on the settings form; a normal configuration save leaves it untouched.
+    bool    bondResetPending;
 };
 
 
