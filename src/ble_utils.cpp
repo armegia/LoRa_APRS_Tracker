@@ -84,7 +84,9 @@ static void publishPairingPasskey() {
     const uint32_t passkey = pairingPasskey.load(std::memory_order_acquire);
     pairingDisplayPasskey.store(passkey, std::memory_order_release);
     logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "BLE Security",
-               "Pairing passkey requested: %06lu", static_cast<unsigned long>(passkey));
+               "Pairing passkey requested; see tracker display");
+    logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "BLE Security",
+               "Pairing passkey: %06lu", static_cast<unsigned long>(passkey));
 }
 
 static void clearPairingDisplay() {
@@ -172,10 +174,13 @@ class MyServerCallbacks : public NimBLEServerCallbacks {
             : logging::LoggerLevel::LOGGER_LEVEL_WARN;
 
         logger.log(level, "BLE Security",
-                   "Security complete for %s (encrypted=%u authenticated=%u bonded=%u keySize=%u storedBonds=%d)",
+                   "Security complete for %s (encrypted=%u authenticated=%u bonded=%u keySize=%u)",
                    peerAddress.c_str(), desc->sec_state.encrypted,
                    desc->sec_state.authenticated, desc->sec_state.bonded,
-                   desc->sec_state.key_size, NimBLEDevice::getNumBonds());
+                   desc->sec_state.key_size);
+        logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "BLE Security",
+                   "Stored bond count at authentication callback: %d (NVS persistence may complete afterward)",
+                   NimBLEDevice::getNumBonds());
     }
 };
 
@@ -249,9 +254,10 @@ namespace BLE_Utils {
     void setup() {
         String BLEid = Config.bluetooth.deviceName;
         BLEDevice::init(BLEid.c_str());
-        // NimBLE-Arduino 1.4.1 Secure Connections pairing stalled with the tested Android
-        // device. Legacy passkey pairing plus ENC+ID distribution produced a persistent,
-        // authenticated bond; see the hardware trace and rationale in PLANS.md.
+        // NimBLE-Arduino 1.4.1 Secure Connections pairing stalled with the tested NA7Q
+        // APRSdroid client. Authenticated legacy passkey pairing plus bidirectional ENC+ID
+        // key distribution produced a persistent bond; keep this compatibility mode isolated
+        // so a future NimBLE 2.x migration can retest Secure Connections independently.
         NimBLEDevice::setSecurityAuth(true, true, false);
         preparePairingPasskey();
         NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_ONLY);

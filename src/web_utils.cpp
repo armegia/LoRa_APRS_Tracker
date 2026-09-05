@@ -197,7 +197,13 @@ namespace WEB_Utils {
         Config.sendAltitude                     = request->hasParam("sendAltitude", true);
         Config.disableGPS                       = request->hasParam("disableGPS", true);
         Config.simplifiedTrackerMode            = request->hasParam("simplifiedTrackerMode", true);
-        Config.logLevel                         = getParamIntSafe("logLevel", Config.logLevel);
+        const int requestedLogLevel             = getParamIntSafe("logLevel", Config.logLevel);
+        if (logging::LoggerLevel::isValidValue(requestedLogLevel)) {
+            Config.logLevel = requestedLogLevel;
+        } else {
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "Web",
+                       "Ignoring unsupported serial log level %d", requestedLogLevel);
+        }
 
         //  Display
         Config.display.ecoMode                  = request->hasParam("display.ecoMode", true);

@@ -89,10 +89,11 @@ rather than a compile-time flag. Keep application diagnostics on this logger ins
 
 ## Git remotes — hard rule, not a preference
 
-`origin` is the public upstream (`github.com/richonguzman/LoRa_APRS_Tracker`) — **never
-push there.** The user's own private remote (their self-hosted Gitea) is the only one that
-should ever be pushed to; confirm its current name with `git remote -v` before pushing, since
-it has been renamed before.
+`origin` is the public upstream (`github.com/richonguzman/LoRa_APRS_Tracker`) — **never push
+there**. `gitea` is the user's private checkpoint remote. `github` is the user's public GitHub
+fork (`github.com/armegia/LoRa_APRS_Tracker`) and is the destination for explicitly approved
+future-PR branches. Never open an upstream pull request or push a branch without confirming the
+requested destination and scope first.
 
 ## Session notes
 

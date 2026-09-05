@@ -174,6 +174,17 @@ or error records. This differs from the first random PIN (`118282`), and the cle
 completed using the corrected non-wrapping `BLE PAIR` screen. The random-PIN feature and its
 hardware acceptance sequence are complete.
 
+**PR-readiness audit:** added GPL headers to the project-owned logger, validation for persisted
+and submitted log levels, INFO/DEBUG separation so PIN digits are not logged at the default INFO
+level, and an explicit warning that the bond count sampled inside the authentication callback
+can precede NimBLE's NVS commit. BLE source comments are now self-contained rather than linking
+to this private notebook. `PULL_REQUEST_DRAFT.md` records the complete maintainer-facing scope,
+tradeoffs, sanitized test evidence, provenance, and attribution.
+
+Representative `-Wall -Werror` builds now pass for the Supreme, original ESP32 T-Beam,
+ESP32-C3 DIY tracker, Heltec ESP32-S3 TNC, and T-Deck Plus environments. Only the Supreme has
+been exercised end-to-end on hardware.
+
 ## 1. Dynamically selectable logging (no reflash required) — DONE (syslog deferred)
 
 **Problem (was):** log level was fixed at compile time via a commented-out `#define DEBUG` in

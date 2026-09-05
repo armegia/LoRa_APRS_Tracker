@@ -285,7 +285,11 @@ bool Configuration::readFile() {
         sendAltitude                    = data["other"]["sendAltitude"] | true;
         disableGPS                      = data["other"]["disableGPS"] | false;
         email                           = data["other"]["email"] | "";
-        logLevel                        = data["other"]["logLevel"] | (int)logging::LoggerLevel::LOGGER_LEVEL_INFO;
+        const int configuredLogLevel    = data["other"]["logLevel"] | (int)logging::LoggerLevel::LOGGER_LEVEL_INFO;
+        if (!logging::LoggerLevel::isValidValue(configuredLogLevel)) needsRewrite = true;
+        logLevel                        = logging::LoggerLevel::isValidValue(configuredLogLevel)
+                                            ? configuredLogLevel
+                                            : (int)logging::LoggerLevel::LOGGER_LEVEL_INFO;
 
         configFile.close();
 
