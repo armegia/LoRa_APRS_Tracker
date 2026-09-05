@@ -7,6 +7,39 @@
 
 Improve runtime diagnostics, board-aware configuration, and BLE TNC bonding
 
+## Summary
+
+BLE characteristics on this tracker accepted connections with no authentication or encryption
+at all: any nearby BLE device could write a KISS frame and get the tracker to transmit under the
+configured amateur-radio callsign. This PR fixes that, and along the way fixes debug logging
+(previously a compile-time switch requiring a reflash) and a shared web UI that could show/save
+settings a given board doesn't actually support.
+
+**What changed, in one line each:**
+
+- Runtime-configurable, thread-safe logging, replacing a removed third-party dependency.
+- `GET /capabilities` + generic web-UI gating, so the config page only shows/accepts settings the
+  connected board actually supports.
+- Authenticated, persistently-bonded BLE pairing with a hardware-random on-screen PIN, plus a
+  "Clear BLE bonds" recovery action.
+- A pre-submission code review (`PR_REVIEW_NOTES.md`) that found and fixed 15 further
+  correctness/consistency issues before this draft was finalized.
+
+**Tested:** builds clean (project's `-Wall -Werror`) on 5 board environments; hardware-verified
+end-to-end — pairing, bond persistence across reset, bidirectional KISS traffic — on the T-Beam
+Supreme v3 only. See "Verification performed" below for both.
+
+**Main tradeoff:** uses BLE Legacy Pairing, not LE Secure Connections, because NimBLE-Arduino
+1.4.1 plus the tested Android client stalled on Secure Connections. See "Authenticated persistent
+BLE bonding" below.
+
+**Status:** draft, not yet opened upstream — see "Before opening the pull request" at the bottom.
+
+Everything past this point is detail and decision history for anyone who wants it: motivation,
+changes, what was tried and rejected, verification evidence, known limitations, and attribution.
+
+---
+
 ## Upstream and scope
 
 - Upstream repository: `richonguzman/LoRa_APRS_Tracker`
@@ -132,18 +165,14 @@ NimBLE 2.x migration should retest Secure Connections as a separate change.
   sentinel behavior; routing the random value through the callback fixed the issue.
 - `getNumBonds()` can still be zero inside the first authentication-complete callback because
   NimBLE persists the bond afterward. Later reconnect and reboot tests reported one stored bond.
-- A pre-submission code review flagged that the logger's `ready_`/`begin()` gate dropped every
-  message logged before `setup()` called `logger.begin()` - including everything `Configuration`
-  logs while loading SPIFFS from its global constructor, which always runs first. Removing that
-  gate did not fix it: a fresh-reset `log2file` capture still showed nothing from that point.
-  Reading the Arduino-ESP32 core (`HWCDC.cpp`, `HardwareSerial.cpp`) showed why - writing to
-  `Serial` before `Serial.begin()` is a no-op at the driver level itself, independent of the
-  logger. `EarlySerialInit` fixes that by running `Serial.begin()` from a global constructed
-  before `Config`, exploiting C++'s same-translation-unit declaration-order guarantee. A second
-  capture after that fix *still* didn't show the earliest lines; that third cause (native-CDC
-  ring-buffer FIFO eviction while no USB host is attached, which is always true for the first few
-  seconds after any reset) is the pre-existing, already-documented limitation in "Known
-  limitations" below, not fixable from this side.
+- A pre-submission review found the logger's `ready_`/`begin()` gate dropped every message
+  logged before `setup()` called `logger.begin()`, including everything `Configuration` logs
+  from its global constructor. Removing the gate wasn't enough on its own: writing to `Serial`
+  before `Serial.begin()` is itself a no-op at the Arduino-ESP32 driver level (confirmed by
+  reading `HWCDC.cpp`/`HardwareSerial.cpp`), so `EarlySerialInit` was added to run
+  `Serial.begin()` from a global constructed before `Config`, using C++'s same-file
+  declaration-order guarantee. A third, separate cause of missing early boot output remains and
+  is out of scope for this PR - see "Known limitations" below.
 
 ## Verification performed
 
