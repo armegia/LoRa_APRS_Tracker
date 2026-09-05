@@ -44,7 +44,6 @@ public:
     }
 
     const char* toString() const;
-    const char* getLineColor() const;
     constexpr Value getValue() const {
         return value_;
     }
@@ -72,7 +71,6 @@ public:
     Logger(const Logger&) = delete;
     Logger& operator=(const Logger&) = delete;
 
-    void begin();
     void setSerial(Stream* serial);
     void setDebugLevel(LoggerLevel level);
 
@@ -86,7 +84,6 @@ private:
     Stream* serial_;
     LoggerLevel level_;
     SemaphoreHandle_t mutex_;
-    bool ready_;
 
     bool syslogSet_;
     WiFiUDP syslogUdp_;

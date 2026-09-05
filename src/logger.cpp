@@ -20,8 +20,6 @@
 
 #include <cstdarg>
 #include <cstdio>
-#include <memory>
-#include <new>
 
 #include <freertos/task.h>
 
@@ -37,10 +35,6 @@ const char* LoggerLevel::toString() const {
     }
 }
 
-const char* LoggerLevel::getLineColor() const {
-    return "";
-}
-
 Logger::Logger()
     : Logger(&Serial, LoggerLevel::LOGGER_LEVEL_DEBUG) {}
 
@@ -54,7 +48,6 @@ Logger::Logger(Stream* serial, LoggerLevel level)
     : serial_(serial),
       level_(level),
       mutex_(xSemaphoreCreateMutex()),
-      ready_(false),
       syslogSet_(false),
       syslogIp_(INADDR_NONE),
       syslogPort_(0) {}
@@ -77,12 +70,6 @@ void Logger::unlock() {
     }
 }
 
-void Logger::begin() {
-    lock();
-    ready_ = true;
-    unlock();
-}
-
 void Logger::setSerial(Stream* serial) {
     lock();
     serial_ = serial;
@@ -91,7 +78,12 @@ void Logger::setSerial(Stream* serial) {
 
 void Logger::setDebugLevel(LoggerLevel level) {
     lock();
-    level_ = level;
+    // Defends against an invalid persisted/cast value (e.g. Config.logLevel never having been
+    // validated, such as when SPIFFS fails before Configuration's own validation runs) so a
+    // garbage threshold can't silently suppress every log level, including ERROR.
+    level_ = LoggerLevel::isValidValue(level.getValue())
+        ? level
+        : LoggerLevel(LoggerLevel::LOGGER_LEVEL_INFO);
     unlock();
 }
 
@@ -117,40 +109,29 @@ void Logger::setSyslogServer(IPAddress ip, unsigned int port, const String& host
 
 void Logger::log(LoggerLevel level, const String& module, const char* format, ...) {
     lock();
-    const bool shouldFormat = (ready_ && level <= level_) || syslogSet_;
+    const bool shouldFormat = (level <= level_) || syslogSet_;
     unlock();
     if (!shouldFormat) {
         return;
     }
 
+    // Fixed-size stack buffer instead of a per-call heap allocation: this runs on every RX/TX
+    // DEBUG trace in the loop() hot path, and an embedded target would rather truncate an
+    // unusually long message than churn the heap on every packet.
+    constexpr size_t kMessageBufferSize = 256;
+    char message[kMessageBufferSize];
+
     va_list args;
     va_start(args, format);
-
-    va_list sizeArgs;
-    va_copy(sizeArgs, args);
-    const int required = vsnprintf(nullptr, 0, format, sizeArgs);
-    va_end(sizeArgs);
+    const int required = vsnprintf(message, sizeof(message), format, args);
+    va_end(args);
 
     if (required < 0) {
-        va_end(args);
         writeRecord(LoggerLevel::LOGGER_LEVEL_ERROR, "Logger", "Failed to format log record");
         return;
     }
 
-    std::unique_ptr<char[]> message(new (std::nothrow) char[static_cast<size_t>(required) + 1]);
-    if (!message) {
-        va_end(args);
-        writeRecord(LoggerLevel::LOGGER_LEVEL_ERROR, "Logger", "Out of memory formatting log record");
-        return;
-    }
-
-    va_list writeArgs;
-    va_copy(writeArgs, args);
-    vsnprintf(message.get(), static_cast<size_t>(required) + 1, format, writeArgs);
-    va_end(writeArgs);
-    va_end(args);
-
-    writeRecord(level, module, message.get());
+    writeRecord(level, module, message);
 }
 
 void Logger::writeRecord(LoggerLevel level, const String& module, const char* message) {
@@ -173,10 +154,10 @@ void Logger::writeRecord(LoggerLevel level, const String& module, const char* me
     record += "\r\n";
 
     lock();
-    if (ready_ && level <= level_ && serial_ != nullptr) {
+    if (level <= level_ && serial_ != nullptr) {
         serial_->write(reinterpret_cast<const uint8_t*>(record.c_str()), record.length());
     }
-    if (syslogSet_) {
+    if (syslogSet_ && level <= level_) {
         syslogLog(level, module, message);
     }
     unlock();

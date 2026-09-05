@@ -71,8 +71,19 @@ ____________________________________________________________________*/
 
 String      versionDate             = "2026-09-05";
 String      versionNumber           = "2.4.3.2";
-// Configuration logs while its global constructor loads SPIFFS, so the logger
-// must be constructed first.
+// Configuration logs while its global constructor loads SPIFFS, so the logger must be
+// constructed first. But logging is useless if Serial itself isn't begun yet: on this Arduino
+// core, writing to Serial before Serial.begin() is a silent no-op at the driver level (the
+// native-USB-CDC and plain-UART backends both allocate their buffers inside begin(), not before)
+// - independent of the logger's own state. C++ constructs globals declared in one file in
+// declaration order, so this tiny object - whose only job is to call Serial.begin() - runs
+// first and makes Serial genuinely ready before Configuration's constructor ever logs anything.
+namespace {
+    struct EarlySerialInit {
+        EarlySerialInit() { Serial.begin(115200); }
+    } earlySerialInit;
+}
+
 logging::Logger                     logger;
 Configuration                       Config;
 HardwareSerial                      gpsSerial(1);
@@ -124,9 +135,8 @@ APRSPacket                          lastReceivedPacket;
 extern bool gpsIsActive;
 
 void setup() {
-    Serial.begin(115200);
+    // Serial.begin() already ran in EarlySerialInit's constructor, before Config's construction.
 
-    logger.begin();
     logger.setDebugLevel(static_cast<logging::LoggerLevel::Value>(Config.logLevel));
     logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "Logger", "Serial logger ready");
 
@@ -233,8 +243,11 @@ void loop() {
     STATION_Utils::checkListenedStationsByTimeAndDelete();
 
     lastTx = millis() - lastTxTime;
-    const bool blePairingDisplayActive = bluetoothActive && Config.bluetooth.useBLE &&
-                                         BLE_Utils::handlePairingDisplay();
+    // Deliberately not gated on bluetoothActive: that flag only reflects the on-device menu
+    // toggle, which does not actually stop the BLE stack (see PLANS.md backlog). Gating on it
+    // here would hide an in-progress pairing PIN if the user toggles Bluetooth off from the menu
+    // mid-pairing, even though the phone is still waiting on that same PIN.
+    const bool blePairingDisplayActive = Config.bluetooth.useBLE && BLE_Utils::handlePairingDisplay();
     if (gpsIsActive) {
         GPS_Utils::getData();
         bool gps_time_update = gps.time.isUpdated();
