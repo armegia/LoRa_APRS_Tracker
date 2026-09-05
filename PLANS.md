@@ -3,6 +3,14 @@
 Personal backlog while getting familiar with this codebase on a LilyGO T-Beam Supreme v3
 (ESP32-S3, SX1262, AXP2101). Not upstream-facing, just tracking intent between sessions.
 
+## Android BLE test client — important
+
+All APRSdroid BLE/KISS investigation and hardware results in this file refer specifically to
+the **NA7Q APRSdroid `stable` branch**:
+<https://github.com/na7q/aprsdroid/tree/stable>. This is not the official/upstream APRSdroid,
+which does not support BLE. The tested NA7Q implementation is
+`src/backend/BluetoothLETnc.scala` and uses the standard BLE KISS UUIDs implemented here.
+
 Priority order (chosen 2026-09-04): **2 → 3 → 4 → 1**. Frequencies are already set correctly
 on both test devices (Europe region), so the web-GUI "cosmetics" items (4, then 1) come last.
 Items 1-4 below (per that priority) are all done and flashed as of 2026-09-04. Milder cases

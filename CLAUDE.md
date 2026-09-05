@@ -102,3 +102,8 @@ LilyGO T-Beam Supreme v3 (`ttgo_t_beam_s3_SUPREME_v3`, COM70 in that environment
 ESP32-S3 USB-CDC — no BOOT-button bootloader entry needed, auto-reset works). It's a living,
 session-scoped doc, not a substitute for reading current code — check it for context on *why*
 something looks mid-flight, but verify against actual code state before relying on it.
+
+The Android BLE/KISS client used for this work is specifically the NA7Q APRSdroid `stable`
+branch (<https://github.com/na7q/aprsdroid/tree/stable>), whose
+`src/backend/BluetoothLETnc.scala` implements BLE. Do not confuse it with official/upstream
+APRSdroid, which does not support BLE.
