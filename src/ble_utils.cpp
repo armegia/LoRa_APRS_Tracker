@@ -17,6 +17,7 @@
  */
 
 #include <NimBLEDevice.h>
+#include <SPIFFS.h>
 #include "configuration.h"
 #include "lora_utils.h"
 #include "kiss_utils.h"
@@ -26,6 +27,8 @@
 
 #define BLE_CHUNK_SIZE  512
 #define MAX_KISS_BUFFER 1024
+#define BLE_BOND_RESET_FILE "/clear_ble_bonds"
+#define BLE_PAIRING_PASSKEY 123456
 
 
 // APPLE - APRS.fi app
@@ -51,19 +54,86 @@ bool    shouldSendBLEtoLoRa     = false;
 String  BLEToLoRaPacket         = "";
 String  kissSerialBuffer        = "";
 
+static int logBleGapSecurityEvent(ble_gap_event* event, void* arg) {
+    (void)arg;
 
-class MyServerCallbacks : public NimBLEServerCallbacks {
-    void onConnect(NimBLEServer* pServer) {
-        bluetoothConnected = true;
-        logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "BLE", "%s", "BLE Client Connected");
-        delay(100);
+    switch (event->type) {
+        case BLE_GAP_EVENT_ENC_CHANGE: {
+            const int status = event->enc_change.status;
+            logger.log(status == 0
+                           ? logging::LoggerLevel::LOGGER_LEVEL_INFO
+                           : logging::LoggerLevel::LOGGER_LEVEL_ERROR,
+                       "BLE Security",
+                       "Encryption change: connection=%u status=%d (%s)",
+                       event->enc_change.conn_handle, status,
+                       NimBLEUtils::returnCodeToString(status));
+            break;
+        }
+
+        case BLE_GAP_EVENT_PASSKEY_ACTION:
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "BLE Security",
+                       "Pairing I/O action: connection=%u action=%u",
+                       event->passkey.conn_handle, event->passkey.params.action);
+            break;
+
+        case BLE_GAP_EVENT_REPEAT_PAIRING:
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "BLE Security",
+                       "Peer requested repeat pairing: connection=%u",
+                       event->repeat_pairing.conn_handle);
+            break;
+
+        default:
+            break;
     }
 
-    void onDisconnect(NimBLEServer* pServer) {
+    return 0;
+}
+
+
+class MyServerCallbacks : public NimBLEServerCallbacks {
+    uint32_t onPassKeyRequest() override {
+        logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "BLE Security",
+                   "Pairing passkey requested: %06u", BLE_PAIRING_PASSKEY);
+        return BLE_PAIRING_PASSKEY;
+    }
+
+    void onConnect(NimBLEServer* pServer, ble_gap_conn_desc* desc) override {
+        (void)pServer;
+        bluetoothConnected = true;
+        const std::string peerAddress = NimBLEAddress(desc->peer_id_addr).toString();
+        logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "BLE",
+                   "Client connected: %s (encrypted=%u authenticated=%u bonded=%u)",
+                   peerAddress.c_str(), desc->sec_state.encrypted,
+                   desc->sec_state.authenticated, desc->sec_state.bonded);
+
+        const int securityStatus = NimBLEDevice::startSecurity(desc->conn_handle);
+        logger.log(securityStatus == 0
+                       ? logging::LoggerLevel::LOGGER_LEVEL_DEBUG
+                       : logging::LoggerLevel::LOGGER_LEVEL_ERROR,
+                   "BLE Security", "Security request on connection=%u: status=%d (%s)",
+                   desc->conn_handle, securityStatus,
+                   NimBLEUtils::returnCodeToString(securityStatus));
+    }
+
+    void onDisconnect(NimBLEServer* pServer, ble_gap_conn_desc* desc) override {
         bluetoothConnected = false;
-        logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "BLE", "%s", "BLE client Disconnected, Started Advertising");
-        delay(100);
+        const std::string peerAddress = NimBLEAddress(desc->peer_id_addr).toString();
+        logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "BLE",
+                   "Client disconnected: %s; restarting advertising", peerAddress.c_str());
         pServer->startAdvertising();
+    }
+
+    void onAuthenticationComplete(ble_gap_conn_desc* desc) override {
+        const std::string peerAddress = NimBLEAddress(desc->peer_id_addr).toString();
+        const logging::LoggerLevel level = desc->sec_state.encrypted && desc->sec_state.bonded
+            ? logging::LoggerLevel::LOGGER_LEVEL_INFO
+            : logging::LoggerLevel::LOGGER_LEVEL_WARN;
+
+        logger.log(level, "BLE Security",
+                   "Security complete for %s (encrypted=%u authenticated=%u bonded=%u keySize=%u storedBonds=%d)",
+                   peerAddress.c_str(), desc->sec_state.encrypted,
+                   desc->sec_state.authenticated, desc->sec_state.bonded,
+                   desc->sec_state.key_size, NimBLEDevice::getNumBonds());
     }
 };
 
@@ -136,6 +206,35 @@ namespace BLE_Utils {
     void setup() {
         String BLEid = Config.bluetooth.deviceName;
         BLEDevice::init(BLEid.c_str());
+        NimBLEDevice::setSecurityAuth(true, true, false);
+        NimBLEDevice::setSecurityPasskey(BLE_PAIRING_PASSKEY);
+        NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_ONLY);
+        NimBLEDevice::setSecurityInitKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
+        NimBLEDevice::setSecurityRespKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
+        NimBLEDevice::setCustomGapHandler(logBleGapSecurityEvent);
+
+        if (SPIFFS.exists(BLE_BOND_RESET_FILE)) {
+            const int previousBonds = NimBLEDevice::getNumBonds();
+            NimBLEDevice::deleteAllBonds();
+            const bool markerRemoved = SPIFFS.remove(BLE_BOND_RESET_FILE);
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "BLE Security",
+                       "Cleared %d stored bond(s)", previousBonds);
+            if (!markerRemoved) {
+                logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "BLE Security",
+                           "Could not remove bond-reset marker");
+            }
+        }
+
+        const int storedBonds = NimBLEDevice::getNumBonds();
+        logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "BLE Security",
+                   "Legacy passkey bonding enabled (PIN %06u); stored bonds: %d",
+                   BLE_PAIRING_PASSKEY, storedBonds);
+        for (int index = 0; index < storedBonds; ++index) {
+            const std::string bondedAddress = NimBLEDevice::getBondedAddress(index).toString();
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "BLE Security",
+                       "Stored bond %d: %s", index + 1, bondedAddress.c_str());
+        }
+
         pServer = BLEDevice::createServer();
         pServer->setCallbacks(new MyServerCallbacks());
 
@@ -144,8 +243,12 @@ namespace BLE_Utils {
         //  KISS (AX.25) or TNC2
         bool useKISS = Config.bluetooth.useKISS;
         pService = pServer->createService(useKISS ? SERVICE_UUID_0 : SERVICE_UUID_1);
-        pCharacteristicTx = pService->createCharacteristic(useKISS ? CHARACTERISTIC_UUID_TX_0 : CHARACTERISTIC_UUID_TX_1, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
-        pCharacteristicRx = pService->createCharacteristic(useKISS ? CHARACTERISTIC_UUID_RX_0 : CHARACTERISTIC_UUID_RX_1, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
+        pCharacteristicTx = pService->createCharacteristic(useKISS ? CHARACTERISTIC_UUID_TX_0 : CHARACTERISTIC_UUID_TX_1,
+                                                            NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY |
+                                                            NIMBLE_PROPERTY::READ_ENC | NIMBLE_PROPERTY::READ_AUTHEN);
+        pCharacteristicRx = pService->createCharacteristic(useKISS ? CHARACTERISTIC_UUID_RX_0 : CHARACTERISTIC_UUID_RX_1,
+                                                            NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR |
+                                                            NIMBLE_PROPERTY::WRITE_ENC | NIMBLE_PROPERTY::WRITE_AUTHEN);
 
         if (pService != nullptr) {
             pCharacteristicRx->setCallbacks(new MyCallbacks());

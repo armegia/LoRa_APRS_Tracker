@@ -69,8 +69,11 @@ ____________________________________________________________________*/
 #endif
 
 
-String      versionDate             = "2026-09-04";
+String      versionDate             = "2026-09-05";
 String      versionNumber           = "2.4.3.2";
+// Configuration logs while its global constructor loads SPIFFS, so the logger
+// must be constructed first.
+logging::Logger                     logger;
 Configuration                       Config;
 HardwareSerial                      gpsSerial(1);
 TinyGPSPlus                         gps;
@@ -118,14 +121,14 @@ uint32_t    lastGPSTime             = 0;
 
 APRSPacket                          lastReceivedPacket;
 
-logging::Logger                     logger;
-
 extern bool gpsIsActive;
 
 void setup() {
     Serial.begin(115200);
 
+    logger.begin();
     logger.setDebugLevel(static_cast<logging::LoggerLevel::Value>(Config.logLevel));
+    logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "Logger", "Serial logger ready");
 
     POWER_Utils::setup();
     displaySetup();
@@ -173,7 +176,7 @@ void setup() {
     randomSeed(esp_random());
 
     POWER_Utils::lowerCpuFrequency();
-    logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "Main", "Smart Beacon is: %s", Utils::getSmartBeaconState());
+    logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "Main", "Smart Beacon is: %s", Utils::getSmartBeaconState().c_str());
     logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "Main", "Setup Done!");
     menuDisplay = 0;
 }

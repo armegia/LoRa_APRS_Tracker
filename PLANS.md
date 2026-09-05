@@ -20,7 +20,7 @@ whether that's an app-side limitation (doesn't actually support this BLE profile
 firmware bug in the TNC2-over-BLE path — needs more research before touching any code.
 Decision: stick to BLE + KISS for now; do not attempt a fix until root-caused further.
 
-## 5. BLE bonding/pairing — attempted, REVERTED (2026-09-04)
+## 5. BLE bonding/pairing — IN PROGRESS, LEGACY-PIN TEST NEXT (2026-09-05)
 
 **Problem:** every time devices were switched, Android required re-pairing, and with no
 security at all *any* nearby BLE device could write into the RX characteristic and get this
@@ -30,8 +30,8 @@ security at all — no `setSecurityAuth()` call, no `_ENC`/`_AUTHEN` characteris
 
 **What was tried, in order:**
 
-1. `NimBLEDevice::setSecurityAuth(true, false, true)` (bonding, no MITM/"Just Works" since this
-   hardware has no display/keypad, secure connections) + `READ_ENC`/`WRITE_ENC` on the
+1. `NimBLEDevice::setSecurityAuth(true, false, true)` (bonding, no MITM/"Just Works" because
+   the firmware has no BLE passkey/confirmation UI, secure connections) + `READ_ENC`/`WRITE_ENC` on the
    characteristics, relying on the library's built-in behavior of auto-starting security when a
    client subscribes to an `_ENC`-flagged characteristic
    ([NimBLEServer.cpp:409-427](.pio/libdeps/ttgo_t_beam_s3_SUPREME_v3/NimBLE-Arduino/src/NimBLEServer.cpp#L409-L427)).
@@ -50,8 +50,7 @@ security at all — no `setSecurityAuth()` call, no `_ENC`/`_AUTHEN` characteris
    discovery settles) appears to actively destabilize the link on this phone rather than just
    being ignored.
 
-**Decision: reverted entirely.** `ble_utils.cpp` is back to its original unauthenticated state
-(confirmed via `git diff` showing zero changes). This is a known-hard problem in the
+**2026-09-04 decision:** reverted entirely at the time. This is a known-hard problem in the
 ESP32/NimBLE + Android BLE bonding space more broadly — Meshtastic (a comparable ESP32 LoRa
 project) has reportedly hit similar issues — so it needs real research before trying again, not
 another blind attempt. The spec-correct trigger (a rejected read/write on an `_ENC`
@@ -62,9 +61,51 @@ revisiting: test attempt 1's approach (passive `_ENC` flags, no proactive `start
 specifically by having the phone app *write* to the tracker (not just receive), since only a
 write should trigger the spec-guaranteed pairing path.
 
-**Authorization gap from this is still open and unaddressed:** the RX characteristic remains
-unauthenticated — anything in BLE range can still write to it. Not fixed, not currently being
-worked on.
+**Hardware investigation 2026-09-05:** APRSdroid stable was checked against its actual
+`BluetoothLETnc.scala` source. Its KISS service and characteristic UUID directions match this
+firmware. It subscribes to the encrypted notify characteristic, expects the first authorization
+failure, and reconnects once. Its UI can report a locally queued position before a GATT write
+has actually reached the tracker, so tracker-side `BLE Tx` is the delivery evidence.
+
+The instrumented tests established the following:
+
+1. Android Settings could put the T-Beam in "saved devices" without running BLE SMP. The
+   tracker saw an unencrypted connection and disconnect, no encryption-change event, and zero
+   stored bonds. The generic Android dialog also offered calls/contacts access, which is not
+   meaningful for this BLE KISS service.
+2. APRSdroid then touched the encrypted characteristic. The first security attempt failed with
+   NimBLE status 7 (`ENOTCONN`); its reconnect waited about 22 seconds and failed with status 13
+   (`ETIMEOUT`). No KISS write reached the tracker.
+3. Starting security immediately from `onConnect` allowed APRSdroid to establish temporary
+   encryption and the tracker received/transmitted its KISS frames. There were no additional
+   prompts during that live session. A tracker reset proved this was **not bonding**: boot still
+   logged `stored bonds: 0`, and the next reconnect failed again.
+4. Secure Connections + MITM + a fixed display-only passkey (`123456`) made Android request the
+   PIN, but NimBLE-Arduino 1.4.1 stalled and timed out. Repeating while entering the PIN in under
+   10 seconds ruled out human delay; encryption never completed and no bond was stored.
+
+**Current checkpoint implementation (built, approved for the next hardware test):** use
+authenticated Legacy Passkey pairing with PIN `123456`, plus explicit ENC+ID key distribution
+in both directions (`setSecurityInitKey(3)` and `setSecurityRespKey(3)`). The characteristics
+require both encryption and authentication. This is compatible with the maintained NimBLE
+secure-server example and works around the failing Secure Connections exchange, but is a real
+security tradeoff: a captured initial legacy pairing is weaker than LE Secure Connections and
+the static six-digit PIN can be brute-forced. The user explicitly approved testing this build.
+If it fails, the next isolated step is migrating NimBLE-Arduino 1.4.1 to the current 2.x API and
+returning to Secure Connections; do not mix that larger migration into the legacy test.
+
+The callbacks now log the exact GAP security status text, peer address, encryption/
+authentication/bond state, key size, and stored bond count. Startup logs all bond addresses at
+DEBUG level. The old 100 ms delays were removed from NimBLE host callbacks.
+
+Recovery is available from Web Configuration → Device → **Clear BLE bonds**. This writes a
+one-shot SPIFFS marker and reboots; after NimBLE initializes on the next normal boot it calls
+`deleteAllBonds()`, removes the marker, and logs how many bonds were cleared.
+
+**Legacy-build acceptance test:** Android asks for PIN `123456` once; the live trace reports
+`encrypted=1 authenticated=1 bonded=1 storedBonds=1`; APRSdroid delivers a KISS frame; after a
+physical tracker reset startup still reports one stored bond and APRSdroid reconnects without
+another prompt.
 
 ## 1. Dynamically selectable logging (no reflash required) — DONE (syslog deferred)
 
@@ -94,6 +135,22 @@ reflash every time.
 **To use:** WiFi AP config portal → set "Serial Log Level" to Debug → Save → device reboots →
 open serial monitor → reboot again (or power-cycle) to catch the DEBUG-level boot-time lines,
 since most of them only fire once during `setup()`.
+
+**Concurrency/formatting repair (2026-09-05, hardware tested):** removed the
+`peterus/esp-logger` dependency and added a project-owned API-compatible logger. The old logger
+wrote one logical record using many separate `Serial.print()` calls, allowing the Arduino loop,
+`nimble_host`, and `async_tcp` tasks to tear each other's lines. It also reused one `va_list`
+across two `vsnprintf()` calls, which is undefined behavior. The replacement formats safely
+with `va_copy()`, prefixes each record with milliseconds/task/core, and writes the entire record
+under one mutex in one `Stream::write()` call. Active direct `Serial.print*()` diagnostics were
+migrated to the same logger; only commented debugging examples remain. Enabling GCC printf
+format checking also exposed and fixed four existing calls that passed Arduino `String` objects
+to `%s` or used runtime text as the format string. The logger remains disabled during global
+construction and is explicitly enabled after `Serial.begin()` so configuration loading cannot
+touch the USB stream before the Arduino core initializes it. Hardware traces from the Arduino
+loop and `nimble_host` tasks confirmed that complete timestamp/task/core-tagged records are
+emitted. ANSI color codes were subsequently removed so captured logs remain plain text across
+PlatformIO, PowerShell, and non-terminal sinks.
 
 ## 2. Surface RSSI/SNR for received packets — DONE
 

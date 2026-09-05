@@ -98,7 +98,7 @@ namespace LoRa_Utils {
         currentLoRainfo += " / CR: ";
         currentLoRainfo += String(currentLoRaType->codingRate4);
 
-        logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "LoRa", currentLoRainfo.c_str());
+        logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "LoRa", "%s", currentLoRainfo.c_str());
         displayShow("LORA FREQ>", "", "CHANGED TO: " + loraCountryFreq, "", "", "", 2000);
     }
 
@@ -207,8 +207,7 @@ namespace LoRa_Utils {
         if (state == RADIOLIB_ERR_NONE) {
             //Serial.println(F("success!"));
         } else {
-            Serial.print(F("Tx failed, code "));
-            Serial.println(state);
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "LoRa Tx", "Transmit failed, code %d", state);
         }
 
         if (Config.notification.ledTx) digitalWrite(Config.notification.ledTxPin, LOW);
@@ -263,8 +262,7 @@ namespace LoRa_Utils {
                         logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "LoRa Rx", "RSSI: %d dBm / SNR: %.2f dB / FreqError: %d Hz", receivedLoraPacket.rssi, receivedLoraPacket.snr, receivedLoraPacket.freqError);
                     }
                 } else {
-                    Serial.print(F("Rx failed, code "));   // 7 = CRC mismatch
-                    Serial.println(state);
+                    logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "LoRa Rx", "Receive failed, code %d", state);   // 7 = CRC mismatch
                 }
             }
         }

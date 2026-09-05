@@ -185,7 +185,7 @@ namespace WX_Utils {
 
         String sensorTelemetry;
         if (isnan(newTemp) || isnan(newHum) || isnan(newPress) || (!wxModuleFound)) {
-            Serial.println("WX Sensor data failed/not found");
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "Weather", "Sensor data failed or sensor not found");
             sensorTelemetry = ((type == 1) ? " - C    - %    - hPa" : "");
         } else {
             if (type == 0) {

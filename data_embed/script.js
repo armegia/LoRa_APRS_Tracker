@@ -372,6 +372,18 @@ document.getElementById('reboot').addEventListener('click', function (e) {
     showToast("Your device will be rebooted in a while");
 });
 
+document.getElementById('clear-ble-bonds').addEventListener('click', function (e) {
+    e.preventDefault();
+
+    if (!window.confirm("Clear every phone paired with this tracker and reboot?")) {
+        return;
+    }
+
+    fetch("/action?type=clear-ble-bonds", { method: "POST" });
+
+    showToast("BLE bonds will be cleared when the device reboots");
+});
+
 
 // Display Switches
 const DisplayEcoModeCheckbox    = document.querySelector('input[name="display.ecoMode"]');

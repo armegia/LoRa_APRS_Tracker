@@ -27,13 +27,13 @@ extern logging::Logger logger;
 
 bool Configuration::writeFile() {
 
-    Serial.println("Saving config..");
+    logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "Config", "Saving configuration");
 
     JsonDocument data;
     File configFile = SPIFFS.open("/tracker_conf.json", "w");
 
     if (!configFile) {
-        Serial.println("Error: Could not open config file for writing");
+        logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "Config", "Could not open configuration file for writing");
         return false;
     }
     try {
@@ -127,14 +127,14 @@ bool Configuration::writeFile() {
         configFile.close();
         return true;
     } catch (...) {
-        Serial.println("Error: Exception occurred while saving config");
+        logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "Config", "Exception while saving configuration");
         configFile.close();
         return false;
     }
 }
 
 bool Configuration::readFile() {
-    Serial.println("Reading config..");
+    logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "Config", "Reading configuration");
     File configFile = SPIFFS.open("/tracker_conf.json", "r");
 
     if (configFile) {
@@ -142,7 +142,7 @@ bool Configuration::readFile() {
         JsonDocument data;
         DeserializationError error = deserializeJson(data, configFile);
         if (error) {
-            Serial.println("Failed to read file, using default configuration");
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "Config", "Failed to read file; using default configuration");
         }
 
         if (data["wifiAP"]["active"].isNull() ||
@@ -290,15 +290,15 @@ bool Configuration::readFile() {
         configFile.close();
 
         if (needsRewrite) {
-            Serial.println("Config JSON incomplete, rewriting...");
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "Config", "Configuration JSON incomplete; rewriting");
             writeFile();
             delay(1000);
             ESP.restart();
         }
-        Serial.println("Config read successfuly");
+        logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "Config", "Configuration read successfully");
         return true;
     } else {
-        Serial.println("Config file not found");
+        logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "Config", "Configuration file not found");
         return false;
     }
 }
@@ -411,22 +411,22 @@ void Configuration::setDefaultValues() {
     email                           = "";
     logLevel                        = (int)logging::LoggerLevel::LOGGER_LEVEL_INFO;
 
-    Serial.println("New Data Created... All is Written!");
+    logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "Config", "Default configuration created");
 }
 
 Configuration::Configuration() {
     if (!SPIFFS.begin(false)) {
-        Serial.println("SPIFFS Mount Failed, formatting...");
+        logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "Config", "SPIFFS mount failed; formatting");
 
         if (!SPIFFS.begin(true)) {
-            Serial.println("SPIFFS Format Failed");
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "Config", "SPIFFS format failed");
             return;
         }
     }
-    Serial.println("SPIFFS Ready");
+    logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "Config", "SPIFFS ready");
 
     if (!SPIFFS.exists("/tracker_conf.json")) {
-        Serial.println("Config not found, creating default...");
+        logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "Config", "Configuration not found; creating defaults");
         setDefaultValues();
         writeFile();
         delay(500);
