@@ -9,11 +9,14 @@ Improve runtime diagnostics, board-aware configuration, and BLE TNC bonding
 
 ## Summary
 
-BLE characteristics on this tracker accepted connections with no authentication or encryption
-at all: any nearby BLE device could write a KISS frame and get the tracker to transmit under the
-configured amateur-radio callsign. This PR fixes that, and along the way fixes debug logging
-(previously a compile-time switch requiring a reflash) and a shared web UI that could show/save
-settings a given board doesn't actually support.
+This started as an annoyance, not a security audit: the Android APRSdroid (NA7Q fork) client
+kept demanding BLE re-authorization on every connection. Investigating why turned up the actual
+cause - BLE characteristics accepted connections with no authentication or encryption at all -
+which is also a real security gap: any nearby BLE device could write a KISS frame and get the
+tracker to transmit under the configured amateur-radio callsign. This PR fixes both the
+annoyance and the gap behind it, and along the way also fixes debug logging (previously a
+compile-time switch requiring a reflash) and a shared web UI that could show/save settings a
+given board doesn't actually support.
 
 **What changed, in one line each:**
 
@@ -55,7 +58,10 @@ addresses reliability, observability, configuration, and pairing in the tracker 
 
 ## Motivation
 
-The investigation started with several user-visible problems:
+The investigation started because the Android APRSdroid (NA7Q fork) client kept demanding BLE
+re-authorization on every connection - an annoyance, not a security concern, at first glance.
+Chasing why it happened is what turned up problem 4 below. Several other user-visible problems
+were already being worked on the day before and are included here too:
 
 1. Debug logging required editing a compile-time switch and reflashing. Log records from the
    Arduino loop, NimBLE host, and AsyncTCP tasks could interleave on the serial stream.
@@ -63,8 +69,9 @@ The investigation started with several user-visible problems:
 3. The shared web UI displayed bare frequency-slot numbers and controls unsupported by some
    compiled boards. On ESP32-S3, selecting Classic Bluetooth could save an impossible setting
    and silently disable Bluetooth behavior.
-4. BLE characteristics accepted connections without authentication or encryption. Android
-   repeatedly requested authorization, and no durable BLE bond was established.
+4. Every BLE reconnect required re-authorizing the phone from scratch, because BLE
+   characteristics accepted connections without any authentication or encryption at all, so no
+   durable bond was ever established.
 5. A fixed pairing passkey would improve compatibility but would be weak and awkward. The
    tracker has a display and hardware RNG, so it can provide a fresh visible passkey.
 
