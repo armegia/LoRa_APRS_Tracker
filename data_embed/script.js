@@ -379,9 +379,15 @@ document.getElementById('clear-ble-bonds').addEventListener('click', function (e
         return;
     }
 
-    fetch("/action?type=clear-ble-bonds", { method: "POST" });
-
-    showToast("BLE bonds will be cleared when the device reboots");
+    fetch("/action?type=clear-ble-bonds", { method: "POST" })
+        .then((response) => {
+            showToast(response.ok
+                ? "BLE bonds will be cleared when the device reboots"
+                : "Could not schedule BLE bond reset");
+        })
+        .catch(() => {
+            showToast("Could not reach the tracker");
+        });
 });
 
 
