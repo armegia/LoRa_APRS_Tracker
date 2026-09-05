@@ -20,7 +20,7 @@ whether that's an app-side limitation (doesn't actually support this BLE profile
 firmware bug in the TNC2-over-BLE path — needs more research before touching any code.
 Decision: stick to BLE + KISS for now; do not attempt a fix until root-caused further.
 
-## 5. BLE bonding/pairing — IN PROGRESS, LEGACY-PIN TEST NEXT (2026-09-05)
+## 5. BLE bonding/pairing — DONE, LEGACY-PIN COMPATIBILITY MODE (2026-09-05)
 
 **Problem:** every time devices were switched, Android required re-pairing, and with no
 security at all *any* nearby BLE device could write into the RX characteristic and get this
@@ -84,15 +84,16 @@ The instrumented tests established the following:
    PIN, but NimBLE-Arduino 1.4.1 stalled and timed out. Repeating while entering the PIN in under
    10 seconds ruled out human delay; encryption never completed and no bond was stored.
 
-**Current checkpoint implementation (built, approved for the next hardware test):** use
+**Final implementation, hardware verified:** use
 authenticated Legacy Passkey pairing with PIN `123456`, plus explicit ENC+ID key distribution
 in both directions (`setSecurityInitKey(3)` and `setSecurityRespKey(3)`). The characteristics
 require both encryption and authentication. This is compatible with the maintained NimBLE
 secure-server example and works around the failing Secure Connections exchange, but is a real
 security tradeoff: a captured initial legacy pairing is weaker than LE Secure Connections and
 the static six-digit PIN can be brute-forced. The user explicitly approved testing this build.
-If it fails, the next isolated step is migrating NimBLE-Arduino 1.4.1 to the current 2.x API and
-returning to Secure Connections; do not mix that larger migration into the legacy test.
+If this compatibility mode ever becomes unacceptable, the next isolated step is migrating
+NimBLE-Arduino 1.4.1 to the current 2.x API and returning to Secure Connections; do not mix that
+larger migration into unrelated changes.
 
 The callbacks now log the exact GAP security status text, peer address, encryption/
 authentication/bond state, key size, and stored bond count. Startup logs all bond addresses at
@@ -102,10 +103,12 @@ Recovery is available from Web Configuration → Device → **Clear BLE bonds**.
 one-shot SPIFFS marker and reboots; after NimBLE initializes on the next normal boot it calls
 `deleteAllBonds()`, removes the marker, and logs how many bonds were cleared.
 
-**Legacy-build acceptance test:** Android asks for PIN `123456` once; the live trace reports
-`encrypted=1 authenticated=1 bonded=1 storedBonds=1`; APRSdroid delivers a KISS frame; after a
-physical tracker reset startup still reports one stored bond and APRSdroid reconnects without
-another prompt.
+**Acceptance test passed on hardware:** Android requested PIN `123456` once. The initial link
+reported `encrypted=1 authenticated=1 bonded=1 keySize=16`; after a physical tracker reset,
+startup reported `stored bonds: 1` and restored identity `94:45:60:54:a7:4b`. APRSdroid then
+reconnected with `encrypted=1 authenticated=1 bonded=1 keySize=16 storedBonds=1`, without a PIN,
+re-pair, or authorization prompt. Two manually sent position frames produced paired `BLE Tx`
+and `LoRa Tx` records and appeared on the T-Beam display. Persistent bonding is confirmed.
 
 ## 1. Dynamically selectable logging (no reflash required) — DONE (syslog deferred)
 

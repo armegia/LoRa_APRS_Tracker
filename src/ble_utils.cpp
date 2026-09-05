@@ -206,6 +206,9 @@ namespace BLE_Utils {
     void setup() {
         String BLEid = Config.bluetooth.deviceName;
         BLEDevice::init(BLEid.c_str());
+        // NimBLE-Arduino 1.4.1 Secure Connections pairing stalled with the tested Android
+        // device. Legacy passkey pairing plus ENC+ID distribution produced a persistent,
+        // authenticated bond; see the hardware trace and rationale in PLANS.md.
         NimBLEDevice::setSecurityAuth(true, true, false);
         NimBLEDevice::setSecurityPasskey(BLE_PAIRING_PASSKEY);
         NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_ONLY);
