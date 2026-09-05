@@ -49,7 +49,14 @@ KISS frame and cause the tracker to transmit under the configured amateur-radio 
 - Serialize final writes across FreeRTOS tasks and emit one plain-text record containing level,
   module, milliseconds, task name, and core number.
 - Add GCC `printf` format checking to catch mismatched `%s` and Arduino `String` arguments.
-- Keep logging disabled during global construction and enable it only after `Serial.begin()`.
+- Format into a fixed-size stack buffer rather than a per-call heap allocation, since this runs
+  on every DEBUG-level trace in the `loop()` hot path.
+- Add a small `EarlySerialInit` global, declared before `Configuration Config;` in
+  `LoRa_APRS_Tracker.cpp`, whose only job is `Serial.begin()`. `Config`'s constructor logs while
+  loading SPIFFS, and C++ constructs globals in one file in declaration order, so this makes
+  `Serial` genuinely ready before that first log call — otherwise (confirmed by reading the
+  Arduino-ESP32 core) writing to `Serial` before `Serial.begin()` is a driver-level no-op on this
+  core, independent of the logger's own state.
 - Replace remaining active direct `Serial.print*()` diagnostics with the shared logger.
 - Add a persisted, validated serial log level: Error (3), Warn (4), Info (6), or Debug (7).
 - Expose that setting in Web Configuration; it takes effect after the normal save/reboot.
@@ -125,6 +132,18 @@ NimBLE 2.x migration should retest Secure Connections as a separate change.
   sentinel behavior; routing the random value through the callback fixed the issue.
 - `getNumBonds()` can still be zero inside the first authentication-complete callback because
   NimBLE persists the bond afterward. Later reconnect and reboot tests reported one stored bond.
+- A pre-submission code review flagged that the logger's `ready_`/`begin()` gate dropped every
+  message logged before `setup()` called `logger.begin()` - including everything `Configuration`
+  logs while loading SPIFFS from its global constructor, which always runs first. Removing that
+  gate did not fix it: a fresh-reset `log2file` capture still showed nothing from that point.
+  Reading the Arduino-ESP32 core (`HWCDC.cpp`, `HardwareSerial.cpp`) showed why - writing to
+  `Serial` before `Serial.begin()` is a no-op at the driver level itself, independent of the
+  logger. `EarlySerialInit` fixes that by running `Serial.begin()` from a global constructed
+  before `Config`, exploiting C++'s same-translation-unit declaration-order guarantee. A second
+  capture after that fix *still* didn't show the earliest lines; that third cause (native-CDC
+  ring-buffer FIFO eviction while no USB host is attached, which is always true for the first few
+  seconds after any reset) is the pre-existing, already-documented limitation in "Known
+  limitations" below, not fixable from this side.
 
 ## Verification performed
 
@@ -175,7 +194,15 @@ packet data. Sanitized excerpts can be supplied during review if requested.
   ESP32-C3, ESP32-S3 TNC, and TFT variants compile successfully, but still require
   maintainer/community runtime testing.
 - ESP32-S3 native USB-CDC can emit boot logs before PlatformIO reconnects. Runtime logs and
-  `log2file` capture work; buffering early boot output is outside this change.
+  `log2file` capture work; buffering early boot output is outside this change. Concretely, this
+  means even the earliest `Configuration`-constructor diagnostics this PR adds (SPIFFS mount/read
+  status) usually still won't be visible in a fresh-reset capture on this board: the native-CDC
+  driver queues writes made while no USB host is attached into a small ring buffer under a FIFO
+  eviction policy, and `setup()`'s own later output fills and wraps that buffer well before a
+  host can reattach after any reset. `EarlySerialInit` (above) fixes the two causes within this
+  PR's control - the logger no longer gates on its own readiness, and `Serial.begin()` now runs
+  before `Config`'s constructor logs anything - but doesn't and can't fix this third, independent
+  USB re-enumeration timing constraint.
 - No APRSdroid source was modified.
 
 ## Suggested reviewer order
@@ -221,6 +248,21 @@ OpenAI Codex assistance during the 2026-09-05 session:
   bond recovery, hardware-random passkeys, thread-safe display handoff, and OLED layout repair;
 - compiled/flashed the test builds under Antonio's direction and maintained the technical/test
   documentation.
+
+Claude Code assistance during a 2026-09-05 pre-submission review session (after the Codex work
+above, same day):
+
+- ran a 15-finding correctness/consistency review of the Codex-authored branch against
+  `origin/main`, documented in `PR_REVIEW_NOTES.md` with provenance, blast radius, and fix
+  options for each finding, reviewed and decided by Antonio before any change was made;
+- fixed the approved findings: the logger initialization-order bugs (including the
+  `EarlySerialInit` global and its three-layered root-cause investigation, above and in
+  "Investigation history"), a syslog log-level filter gap, single-BLE-connection enforcement, an
+  unchecked compare-exchange in the pairing-PIN timeout path, a `Configuration`-backed bond-reset
+  flag replacing a SPIFFS marker file, and the `hasBLE`-gated "Clear BLE bonds" UI/backend guard;
+- compiled the representative build matrix and flashed/hardware-tested the result on the T-Beam
+  Supreme v3, confirming persistent BLE bonding and clean boot after the changes;
+- maintained `PLANS.md`'s backlog for the findings deliberately deferred rather than fixed here.
 
 There is no raw Claude chat transcript in the repository. The Claude/Codex division above is a
 best-effort reconstruction from Git history, `CLAUDE.md`, `PLANS.md`, and the retained Codex

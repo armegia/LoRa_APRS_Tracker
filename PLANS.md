@@ -324,6 +324,84 @@ per-board web changes and self-updates correctly for boards nobody here can test
       `hasBTClassic: true` path (an original-ESP32 board) is untested — exactly the kind of
       thing worth a PR so someone with that hardware can confirm it.
 
+## 6. Code-review follow-ups (2026-09-05) — deferred, not fixed in this PR
+
+A pre-submission review of `pr/diagnostics-ble-bonding` against `origin/main` found 15 issues
+(full detail, evidence, and fix-option trade-offs in `PR_REVIEW_NOTES.md`, not committed — a
+scratch review doc). Most were fixed directly on this branch. The items below were deliberately
+left for a future, separate change rather than bundled into this PR:
+
+- **Initialization order (from finding #1) — two layered fixes landed; a third, separate
+  limitation remains and is out of scope.** `Configuration Config;` is a global, so its
+  constructor — which does SPIFFS mount/read and logs along the way — always runs before
+  `Serial.begin()` in `setup()`. Two real bugs stacked on top of each other here, found one at a
+  time by actually testing on hardware rather than trusting static reading alone:
+  1. The logger's own `ready_`/`begin()` gate blocked all logging until `logger.begin()` ran in
+     `setup()`, unconditionally dropping anything logged earlier. **Fixed** by removing `ready_`/
+     `begin()` entirely, restoring upstream's original permissive behavior with the new logger's
+     thread-safety/formatting improvements kept on top.
+  2. Flashing the Supreme and capturing boot with `pio device monitor --filter log2file` showed
+     the earliest lines *still* missing after fix 1. Traced to the Arduino-ESP32 core itself:
+     `HWCDC::write()` (native USB-CDC, used by `Serial` on this board) checks
+     `tx_ring_buf == NULL` and no-ops — that ring buffer is only allocated inside
+     `Serial.begin()`. Plain-UART `HardwareSerial::write()` has the same shape (`_uart` stays
+     `NULL` until `begin()`). So writing to `Serial` before `Serial.begin()` has *always* been a
+     silent no-op at the driver level, on every board, regardless of the logger — upstream's
+     original code never actually printed these lines on real hardware either. **Fixed** by
+     adding a tiny global, `EarlySerialInit earlySerialInit;` (`LoRa_APRS_Tracker.cpp`), whose
+     constructor's only job is `Serial.begin(115200)`, declared *before* `Configuration Config;`
+     in the same file. C++ guarantees globals in one translation unit construct in declaration
+     order, so `Serial` is now genuinely begun before `Config`'s constructor ever logs. `setup()`
+     no longer calls `Serial.begin()` itself — it already happened.
+  3. Re-flashing with fix 2 in place, the earliest lines are *still* not visible in a
+     `log2file` capture taken by attaching the monitor after a fresh reset — but this is a third,
+     independent, and genuinely out-of-scope cause, confirmed by reading `HWCDC.cpp` further:
+     when no USB host is connected (`isCDC_Connected() == false`, true for the first few seconds
+     after any chip reset, cold or software, while Windows re-enumerates the port), `write()`
+     still queues bytes into a small ring buffer via `flushTXBuffer()`, but under an explicit FIFO
+     eviction policy once that buffer fills. `setup()` prints far more than the buffer holds
+     before a host reconnects, so only the last stretch of boot output survives to be seen — the
+     very-earliest lines are evicted before any monitor exists to read them. This is exactly the
+     "ESP32-S3 native USB-CDC can emit boot logs before PlatformIO reconnects" limitation already
+     called out in `PULL_REQUEST_DRAFT.md`'s "Known limitations," not a new one, and not something
+     fixes 1-2 could have addressed — there is no way to keep the CDC "connected" across a chip
+     reset, since the reset itself is what drops the USB connection. Fixes 1-2 are still verified
+     correct by direct source-reading of the exact driver code paths involved; they should help
+     in any scenario that doesn't require surviving a full chip reset before a host reattaches
+     (e.g. a future WiFi-based syslog sink, though that specific case would need Config-loaded
+     WiFi credentials before it could apply here regardless).
+  - The remaining, larger fix — making `Configuration` load lazily via an explicit `Config.load()`
+    called from `setup()` after `Serial`/the logger are ready, instead of doing SPIFFS I/O from a
+    global constructor — would still be needed to make the earliest diagnostics visible in a
+    fresh-boot capture on this board, since it would move the logging past the point where
+    `setup()`'s own later output has already filled/evicted the ring buffer. Real architectural
+    surgery around C++ static-init order; deserves its own isolated change, not bundled further
+    into this PR.
+
+- **BLE pairing-PIN display vs. the menu state machine (from finding #8).** The pairing-PIN OLED
+  screen is arbitrated by a standalone `blePairingDisplayActive` bool in `loop()`
+  (`LoRa_APRS_Tracker.cpp`), not by adding a case to the existing `menuDisplay` state machine
+  (`menu_utils.cpp`) that already owns "who gets the screen" plus its own 30s idle-timeout. If a
+  user is mid-menu-navigation exactly when a phone pairs, the menu freezes on the PIN screen for
+  up to 60s and the next redraw afterward can abruptly reset menu/message-compose state. Narrow,
+  self-bounded window; left as-is for this PR. Proper fix: give the pairing PIN its own
+  `menuDisplay` case and drop the separate bool.
+
+- **No on-device sign of a rejected pairing attempt (finding #9).** Once a peer connects but
+  never completes pairing, every GATT read/write on the TX/RX characteristics is silently denied
+  at the ATT layer (correctly — "silently deny" is the safe default) but nothing on the tracker's
+  own display says why. UX gap, not a defect. Would need a signal path from the ATT-layer
+  rejection up to the display loop that NimBLE's callbacks may not directly expose.
+
+- **Menu's Bluetooth on/off toggle doesn't touch the BLE stack (finding #10).** `menu_utils.cpp`'s
+  existing (pre-existing, unmodified by this PR) Bluetooth-off handler just flips the
+  `bluetoothActive` bool; it never calls `BLE_Utils::stop()`/`setup()`, so the BLE stack keeps
+  running underneath regardless of what the menu shows. The concrete symptom this PR hit — toggling
+  it off mid-pairing could hide an in-progress PIN — is fixed (the pairing-display gate no longer
+  keys off `bluetoothActive`). But the toggle still doesn't do what its label implies. Fixing that
+  properly means touching `menu_utils.cpp`, which this PR otherwise has no reason to touch —
+  scope for a separate future PR.
+
 ## Debugging setup reference
 
 - Board enumerates as **COM70** (native ESP32-S3 USB CDC, `ARDUINO_USB_CDC_ON_BOOT=1`).
