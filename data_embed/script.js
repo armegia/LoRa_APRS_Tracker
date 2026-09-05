@@ -2,6 +2,9 @@
 
 let currentSettings = null;
 
+// Mirrors the index->region switch in src/lora_utils.cpp changeFreq()
+const LORA_REGION_LABELS = ["EU/WORLD", "POLAND", "UK", "US"];
+
 function backupSettings() {
     const data =
         "data:text/json;charset=utf-8," +
@@ -35,6 +38,28 @@ document.querySelector("input[type=file]").onchange = function () {
         loadSettings(data);
     };
 };
+
+// Generic board-capability gating: hides/shows any element tagged with
+// data-requires-capability="<name>" (and its optional
+// data-requires-capability-fallback="<name>" sibling) based on what the connected board's
+// firmware actually has compiled in, reported by GET /capabilities. Add a new gated control by
+// adding one key to that endpoint (src/web_utils.cpp) and one matching attribute here - no
+// per-board web changes needed.
+function applyCapabilities() {
+    fetch("/capabilities")
+        .then((response) => response.json())
+        .then((capabilities) => {
+            document.querySelectorAll("[data-requires-capability]").forEach((el) => {
+                el.hidden = !capabilities[el.dataset.requiresCapability];
+            });
+            document.querySelectorAll("[data-requires-capability-fallback]").forEach((el) => {
+                el.hidden = !!capabilities[el.dataset.requiresCapabilityFallback];
+            });
+        })
+        .catch((err) => {
+            console.error(err);
+        });
+}
 
 function fetchSettings() {
     fetch("/configuration.json")
@@ -175,6 +200,7 @@ function loadSettings(settings) {
     document.getElementById("sendAltitude").checked                     = settings.other.sendAltitude ;
     document.getElementById("disableGPS").checked                       = settings.other.disableGPS;
     document.getElementById("email").value                              = settings.other.email;
+    document.getElementById("logLevel").value                           = settings.other.logLevel;
 
     // DISPLAY
     document.getElementById("display.ecoMode").checked                  = settings.display.ecoMode;
@@ -202,9 +228,11 @@ function loadSettings(settings) {
         const loraElement = document.createElement("div");
         loraElement.classList.add("row", "lora", "border-bottom", "py-2");
 
+        const regionLabel = LORA_REGION_LABELS[index] ? ` ${LORA_REGION_LABELS[index]}` : "";
+
         loraElement.innerHTML = `
-            <div class="col-1 px-1 mb-2 d-flex align-items-center">
-                <strong>${index + 1})</strong> <!-- Adding numbering here -->
+            <div class="col-3 col-md-2 px-1 mb-2 d-flex align-items-center">
+                <strong>${index + 1})${regionLabel}</strong> <!-- Adding numbering here -->
             </div>
             <div class="form-floating col-6 col-md-3 px-1 mb-2">
                 <input 
@@ -342,6 +370,18 @@ document.getElementById('reboot').addEventListener('click', function (e) {
     fetch("/action?type=reboot", { method: "POST" });
 
     showToast("Your device will be rebooted in a while");
+});
+
+document.getElementById('clear-ble-bonds').addEventListener('click', function (e) {
+    e.preventDefault();
+
+    if (!window.confirm("Clear every phone paired with this tracker and reboot?")) {
+        return;
+    }
+
+    fetch("/action?type=clear-ble-bonds", { method: "POST" });
+
+    showToast("BLE bonds will be cleared when the device reboots");
 });
 
 
@@ -489,3 +529,4 @@ form.addEventListener("submit", async (event) => {
 
 
 fetchSettings();
+applyCapabilities();

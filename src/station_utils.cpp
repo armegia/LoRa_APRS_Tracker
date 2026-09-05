@@ -333,7 +333,7 @@ namespace STATION_Utils {
                     screenBrightness = index;
                     logMessage = "Brightness:";
                 }
-                logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "Main", "%s %s", logMessage.c_str(), firstLine);
+                logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "Main", "%s %s", logMessage.c_str(), firstLine.c_str());
             }
             fileIndex.close();
         }

@@ -19,10 +19,12 @@
 #include "board_pinout.h"
 #include "sleep_utils.h"
 #include "power_utils.h"
+#include "logger.h"
 
 
 extern uint32_t         lastGPSTime;
 extern bool             gpsIsActive;
+extern logging::Logger  logger;
 
 bool gpsShouldSleep     = false;
 
@@ -35,7 +37,7 @@ namespace SLEEP_Utils {
                 POWER_Utils::deactivateGPS();
                 lastGPSTime = millis();
                 //
-                Serial.println("GPS SLEEPING");
+                logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "GPS", "Sleeping");
                 //
             }
         #endif
@@ -47,7 +49,7 @@ namespace SLEEP_Utils {
                 POWER_Utils::activateGPS();
                 gpsShouldSleep = false;
                 //
-                Serial.println("GPS WAKEUP");
+                logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "GPS", "Waking up");
                 //
             }
         #endif

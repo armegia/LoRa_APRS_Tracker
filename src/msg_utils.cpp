@@ -106,13 +106,13 @@ namespace MSG_Utils {
 
     void loadNumMessages() {
         if(!SPIFFS.begin(true)) {
-            Serial.println("An Error has occurred while mounting SPIFFS");
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "Messages", "Error mounting SPIFFS");
             return;
         }
 
         File fileToReadAPRS = SPIFFS.open("/aprsMessages.txt");
         if(!fileToReadAPRS) {
-            Serial.println("Failed to open APRS_Msg for reading");
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "Messages", "Failed to open APRS messages for reading");
             return;
         }
 
@@ -126,11 +126,11 @@ namespace MSG_Utils {
         for (String s1 : v1) {
             numAPRSMessages++;
         }
-        logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "Main", "Number of APRS Messages : %s", String(numAPRSMessages));
+        logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "Main", "Number of APRS Messages : %s", String(numAPRSMessages).c_str());
 
         File fileToReadWLNK = SPIFFS.open("/winlinkMails.txt");
         if(!fileToReadWLNK) {
-            Serial.println("Failed to open Winlink_Msg for reading");
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "Messages", "Failed to open Winlink messages for reading");
             return;
         }
 
@@ -144,7 +144,7 @@ namespace MSG_Utils {
         for (String s2 : v2) {
             numWLNKMessages++;
         }
-        logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "Main", "Number of Winlink Mails : %s", String(numWLNKMessages));
+        logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "Main", "Number of Winlink Mails : %s", String(numWLNKMessages).c_str());
     }
 
     void loadMessagesFromMemory(uint8_t typeOfMessage) {
@@ -161,7 +161,7 @@ namespace MSG_Utils {
                 displayShow("   INFO", "", " NO APRS MSG SAVED", 1500);
             } else {
                 if(!fileToRead) {
-                    Serial.println("Failed to open file for reading");
+                    logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "Messages", "Failed to open APRS message file for reading");
                     return;
                 }
                 while (fileToRead.available()) {
@@ -181,7 +181,7 @@ namespace MSG_Utils {
                 displayShow("   INFO", "", " NO WLNK MAILS SAVED", 1500);
             } else {
                 if(!fileToRead) {
-                    Serial.println("Failed to open file for reading");
+                    logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "Messages", "Failed to open Winlink message file for reading");
                     return;
                 }
                 while (fileToRead.available()) {
@@ -209,7 +209,7 @@ namespace MSG_Utils {
 
     void deleteFile(uint8_t typeOfFile) {
         if(!SPIFFS.begin(true)) {
-            Serial.println("An Error has occurred while mounting SPIFFS");
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "Messages", "Error mounting SPIFFS");
             return;
         }
         if (typeOfFile == 0) {  //APRS
@@ -225,12 +225,12 @@ namespace MSG_Utils {
         if (typeMessage == 0 && lastMessageSaved != message) {   //APRS
             File fileToAppendAPRS = SPIFFS.open("/aprsMessages.txt", FILE_APPEND);
             if(!fileToAppendAPRS) {
-                Serial.println("There was an error opening the file for appending");
+                logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "Messages", "Failed to open APRS message file for appending");
                 return;
             }
             message.trim();
             if(!fileToAppendAPRS.println(station + "," + message)) {
-                Serial.println("File append failed");
+                logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "Messages", "Appending APRS message failed");
             }
             lastMessageSaved = message;
             numAPRSMessages++;
@@ -241,12 +241,12 @@ namespace MSG_Utils {
         } else if (typeMessage == 1 && lastMessageSaved != message) {    //WLNK
             File fileToAppendWLNK = SPIFFS.open("/winlinkMails.txt", FILE_APPEND);
             if(!fileToAppendWLNK) {
-                Serial.println("There was an error opening the file for appending");
+                logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "Messages", "Failed to open Winlink message file for appending");
                 return;
             }
             message.trim();
             if(!fileToAppendWLNK.println(message)) {
-                Serial.println("File append failed");
+                logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "Messages", "Appending Winlink message failed");
             }
             lastMessageSaved = message;
             numWLNKMessages++;
@@ -453,7 +453,7 @@ namespace MSG_Utils {
                         }
 
                         if (lastReceivedPacket.sender == "CA2RXU-15" && lastReceivedPacket.payload.indexOf("WX") == 0) {    // WX = WeatherReport
-                            Serial.println("Weather Report Received");
+                            logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "Weather", "Weather report received");
                             const String& wxCleaning     = lastReceivedPacket.payload.substring(lastReceivedPacket.payload.indexOf("WX ") + 3);
                             const String& place          = wxCleaning.substring(0,wxCleaning.indexOf(","));
                             const String& placeCleaning  = wxCleaning.substring(wxCleaning.indexOf(",")+1);

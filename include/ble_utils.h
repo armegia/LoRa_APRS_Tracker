@@ -26,6 +26,7 @@ namespace BLE_Utils {
 
     void stop();
     void setup();
+    bool handlePairingDisplay();
     void sendToLoRa();
     void sendToPhone(const String& packet);
 

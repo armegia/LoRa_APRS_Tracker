@@ -71,6 +71,9 @@ ____________________________________________________________________*/
 
 String      versionDate             = "2026-04-22";
 String      versionNumber           = "2.4.3.2";
+// Configuration logs while its global constructor loads SPIFFS, so the logger
+// must be constructed first.
+logging::Logger                     logger;
 Configuration                       Config;
 HardwareSerial                      gpsSerial(1);
 TinyGPSPlus                         gps;
@@ -118,17 +121,14 @@ uint32_t    lastGPSTime             = 0;
 
 APRSPacket                          lastReceivedPacket;
 
-logging::Logger                     logger;
-//#define DEBUG
-
 extern bool gpsIsActive;
 
 void setup() {
     Serial.begin(115200);
 
-    #ifndef DEBUG
-        logger.setDebugLevel(logging::LoggerLevel::LOGGER_LEVEL_INFO);
-    #endif
+    logger.begin();
+    logger.setDebugLevel(static_cast<logging::LoggerLevel::Value>(Config.logLevel));
+    logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "Logger", "Serial logger ready");
 
     POWER_Utils::setup();
     displaySetup();
@@ -176,7 +176,7 @@ void setup() {
     randomSeed(esp_random());
 
     POWER_Utils::lowerCpuFrequency();
-    logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "Main", "Smart Beacon is: %s", Utils::getSmartBeaconState());
+    logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "Main", "Smart Beacon is: %s", Utils::getSmartBeaconState().c_str());
     logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "Main", "Setup Done!");
     menuDisplay = 0;
 }
@@ -233,6 +233,8 @@ void loop() {
     STATION_Utils::checkListenedStationsByTimeAndDelete();
 
     lastTx = millis() - lastTxTime;
+    const bool blePairingDisplayActive = bluetoothActive && Config.bluetooth.useBLE &&
+                                         BLE_Utils::handlePairingDisplay();
     if (gpsIsActive) {
         GPS_Utils::getData();
         bool gps_time_update = gps.time.isUpdated();
@@ -253,8 +255,10 @@ void loop() {
         if (gps_time_update) SMARTBEACON_Utils::checkInterval(currentSpeed);
 
         if (millis() - refreshDisplayTime >= 1000 || gps_time_update) {
-            GPS_Utils::checkStartUpFrames();
-            MENU_Utils::showOnScreen();
+            if (!blePairingDisplayActive) {
+                GPS_Utils::checkStartUpFrames();
+                MENU_Utils::showOnScreen();
+            }
             refreshDisplayTime = millis();
         }
         SLEEP_Utils::checkIfGPSShouldSleep();
@@ -264,7 +268,7 @@ void loop() {
         }
         STATION_Utils::checkStandingUpdateTime();
         if (millis() - refreshDisplayTime >= 1000) {
-            MENU_Utils::showOnScreen();
+            if (!blePairingDisplayActive) MENU_Utils::showOnScreen();
             refreshDisplayTime = millis();
         }
     }

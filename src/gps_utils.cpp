@@ -109,8 +109,7 @@ namespace GPS_Utils {
             } else {
                 if (currentBeacon->gpsEcoMode) {
                     //
-                    Serial.print("minTxDistance not achieved : ");
-                    Serial.println(lastTxDistance);
+                    logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "GPS", "Minimum TX distance not achieved: %.2f", lastTxDistance);
                     //
                     gpsShouldSleep = true;
                 }

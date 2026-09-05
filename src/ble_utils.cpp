@@ -17,6 +17,8 @@
  */
 
 #include <NimBLEDevice.h>
+#include <SPIFFS.h>
+#include <atomic>
 #include "configuration.h"
 #include "lora_utils.h"
 #include "kiss_utils.h"
@@ -26,6 +28,12 @@
 
 #define BLE_CHUNK_SIZE  512
 #define MAX_KISS_BUFFER 1024
+#define BLE_BOND_RESET_FILE "/clear_ble_bonds"
+#define BLE_PAIRING_PIN_MIN 100000UL
+#define BLE_PAIRING_PIN_RANGE 900000UL
+#define NIMBLE_PASSKEY_CALLBACK_SENTINEL 123456UL
+#define BLE_PAIRING_DISPLAY_TIMEOUT_MS 60000UL
+#define BLE_PAIRING_DISPLAY_REFRESH_MS 1000UL
 
 
 // APPLE - APRS.fi app
@@ -46,24 +54,133 @@ extern Configuration    Config;
 extern logging::Logger  logger;
 extern bool             bluetoothConnected;
 extern bool             bluetoothActive;
+extern bool             displayState;
+extern uint32_t         displayTime;
 
 bool    shouldSendBLEtoLoRa     = false;
 String  BLEToLoRaPacket         = "";
 String  kissSerialBuffer        = "";
 
+// NimBLE callbacks run in the host task. Only publish plain values from there;
+// all display and String work stays in the Arduino loop task.
+static std::atomic<uint32_t> pairingPasskey {BLE_PAIRING_PIN_MIN};
+static std::atomic<uint32_t> pairingDisplayPasskey {0};
 
-class MyServerCallbacks : public NimBLEServerCallbacks {
-    void onConnect(NimBLEServer* pServer) {
-        bluetoothConnected = true;
-        logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "BLE", "%s", "BLE Client Connected");
-        delay(100);
+static uint32_t generatePairingPasskey() {
+    return BLE_PAIRING_PIN_MIN + (esp_random() % BLE_PAIRING_PIN_RANGE);
+}
+
+static void preparePairingPasskey() {
+    const uint32_t passkey = generatePairingPasskey();
+    pairingPasskey.store(passkey, std::memory_order_release);
+    pairingDisplayPasskey.store(0, std::memory_order_release);
+    // NimBLE-Arduino 1.4.1 calls onPassKeyRequest() for DISPLAY_ONLY only when
+    // its configured passkey still equals the library's 123456 sentinel. The
+    // callback below returns the actual random value used by this connection.
+    NimBLEDevice::setSecurityPasskey(NIMBLE_PASSKEY_CALLBACK_SENTINEL);
+}
+
+static void publishPairingPasskey() {
+    const uint32_t passkey = pairingPasskey.load(std::memory_order_acquire);
+    pairingDisplayPasskey.store(passkey, std::memory_order_release);
+    logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "BLE Security",
+               "Pairing passkey requested; see tracker display");
+    logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "BLE Security",
+               "Pairing passkey: %06lu", static_cast<unsigned long>(passkey));
+}
+
+static void clearPairingDisplay() {
+    pairingDisplayPasskey.store(0, std::memory_order_release);
+}
+
+static int logBleGapSecurityEvent(ble_gap_event* event, void* arg) {
+    (void)arg;
+
+    switch (event->type) {
+        case BLE_GAP_EVENT_ENC_CHANGE: {
+            const int status = event->enc_change.status;
+            logger.log(status == 0
+                           ? logging::LoggerLevel::LOGGER_LEVEL_INFO
+                           : logging::LoggerLevel::LOGGER_LEVEL_ERROR,
+                       "BLE Security",
+                       "Encryption change: connection=%u status=%d (%s)",
+                       event->enc_change.conn_handle, status,
+                       NimBLEUtils::returnCodeToString(status));
+            break;
+        }
+
+        case BLE_GAP_EVENT_PASSKEY_ACTION:
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "BLE Security",
+                       "Pairing I/O action: connection=%u action=%u",
+                       event->passkey.conn_handle, event->passkey.params.action);
+            break;
+
+        case BLE_GAP_EVENT_REPEAT_PAIRING:
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "BLE Security",
+                       "Peer requested repeat pairing: connection=%u",
+                       event->repeat_pairing.conn_handle);
+            break;
+
+        default:
+            break;
     }
 
-    void onDisconnect(NimBLEServer* pServer) {
+    return 0;
+}
+
+
+class MyServerCallbacks : public NimBLEServerCallbacks {
+    uint32_t onPassKeyRequest() override {
+        // This callback is the only reliable place in NimBLE-Arduino 1.4.1 to
+        // publish the display-only PIN and return the exact value it injects.
+        const uint32_t passkey = pairingPasskey.load(std::memory_order_acquire);
+        publishPairingPasskey();
+        return passkey;
+    }
+
+    void onConnect(NimBLEServer* pServer, ble_gap_conn_desc* desc) override {
+        (void)pServer;
+        bluetoothConnected = true;
+        const std::string peerAddress = NimBLEAddress(desc->peer_id_addr).toString();
+        logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "BLE",
+                   "Client connected: %s (encrypted=%u authenticated=%u bonded=%u)",
+                   peerAddress.c_str(), desc->sec_state.encrypted,
+                   desc->sec_state.authenticated, desc->sec_state.bonded);
+
+        preparePairingPasskey();
+        const int securityStatus = NimBLEDevice::startSecurity(desc->conn_handle);
+        logger.log(securityStatus == 0
+                       ? logging::LoggerLevel::LOGGER_LEVEL_DEBUG
+                       : logging::LoggerLevel::LOGGER_LEVEL_ERROR,
+                   "BLE Security", "Security request on connection=%u: status=%d (%s)",
+                   desc->conn_handle, securityStatus,
+                   NimBLEUtils::returnCodeToString(securityStatus));
+    }
+
+    void onDisconnect(NimBLEServer* pServer, ble_gap_conn_desc* desc) override {
         bluetoothConnected = false;
-        logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "BLE", "%s", "BLE client Disconnected, Started Advertising");
-        delay(100);
+        clearPairingDisplay();
+        const std::string peerAddress = NimBLEAddress(desc->peer_id_addr).toString();
+        logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "BLE",
+                   "Client disconnected: %s; restarting advertising", peerAddress.c_str());
         pServer->startAdvertising();
+    }
+
+    void onAuthenticationComplete(ble_gap_conn_desc* desc) override {
+        clearPairingDisplay();
+        const std::string peerAddress = NimBLEAddress(desc->peer_id_addr).toString();
+        const logging::LoggerLevel level = desc->sec_state.encrypted && desc->sec_state.bonded
+            ? logging::LoggerLevel::LOGGER_LEVEL_INFO
+            : logging::LoggerLevel::LOGGER_LEVEL_WARN;
+
+        logger.log(level, "BLE Security",
+                   "Security complete for %s (encrypted=%u authenticated=%u bonded=%u keySize=%u)",
+                   peerAddress.c_str(), desc->sec_state.encrypted,
+                   desc->sec_state.authenticated, desc->sec_state.bonded,
+                   desc->sec_state.key_size);
+        logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "BLE Security",
+                   "Stored bond count at authentication callback: %d (NVS persistence may complete afterward)",
+                   NimBLEDevice::getNumBonds());
     }
 };
 
@@ -130,12 +247,46 @@ class MyCallbacks : public NimBLECharacteristicCallbacks {
 namespace BLE_Utils {
 
     void stop() {
+        clearPairingDisplay();
         BLEDevice::deinit();
     }
 
     void setup() {
         String BLEid = Config.bluetooth.deviceName;
         BLEDevice::init(BLEid.c_str());
+        // NimBLE-Arduino 1.4.1 Secure Connections pairing stalled with the tested NA7Q
+        // APRSdroid client. Authenticated legacy passkey pairing plus bidirectional ENC+ID
+        // key distribution produced a persistent bond; keep this compatibility mode isolated
+        // so a future NimBLE 2.x migration can retest Secure Connections independently.
+        NimBLEDevice::setSecurityAuth(true, true, false);
+        preparePairingPasskey();
+        NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_ONLY);
+        NimBLEDevice::setSecurityInitKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
+        NimBLEDevice::setSecurityRespKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
+        NimBLEDevice::setCustomGapHandler(logBleGapSecurityEvent);
+
+        if (SPIFFS.exists(BLE_BOND_RESET_FILE)) {
+            const int previousBonds = NimBLEDevice::getNumBonds();
+            NimBLEDevice::deleteAllBonds();
+            const bool markerRemoved = SPIFFS.remove(BLE_BOND_RESET_FILE);
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "BLE Security",
+                       "Cleared %d stored bond(s)", previousBonds);
+            if (!markerRemoved) {
+                logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "BLE Security",
+                           "Could not remove bond-reset marker");
+            }
+        }
+
+        const int storedBonds = NimBLEDevice::getNumBonds();
+        logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "BLE Security",
+                    "Legacy bonding enabled with a per-connection random PIN; stored bonds: %d",
+                    storedBonds);
+        for (int index = 0; index < storedBonds; ++index) {
+            const std::string bondedAddress = NimBLEDevice::getBondedAddress(index).toString();
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "BLE Security",
+                       "Stored bond %d: %s", index + 1, bondedAddress.c_str());
+        }
+
         pServer = BLEDevice::createServer();
         pServer->setCallbacks(new MyServerCallbacks());
 
@@ -144,8 +295,12 @@ namespace BLE_Utils {
         //  KISS (AX.25) or TNC2
         bool useKISS = Config.bluetooth.useKISS;
         pService = pServer->createService(useKISS ? SERVICE_UUID_0 : SERVICE_UUID_1);
-        pCharacteristicTx = pService->createCharacteristic(useKISS ? CHARACTERISTIC_UUID_TX_0 : CHARACTERISTIC_UUID_TX_1, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
-        pCharacteristicRx = pService->createCharacteristic(useKISS ? CHARACTERISTIC_UUID_RX_0 : CHARACTERISTIC_UUID_RX_1, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
+        pCharacteristicTx = pService->createCharacteristic(useKISS ? CHARACTERISTIC_UUID_TX_0 : CHARACTERISTIC_UUID_TX_1,
+                                                            NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY |
+                                                            NIMBLE_PROPERTY::READ_ENC | NIMBLE_PROPERTY::READ_AUTHEN);
+        pCharacteristicRx = pService->createCharacteristic(useKISS ? CHARACTERISTIC_UUID_RX_0 : CHARACTERISTIC_UUID_RX_1,
+                                                            NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR |
+                                                            NIMBLE_PROPERTY::WRITE_ENC | NIMBLE_PROPERTY::WRITE_AUTHEN);
 
         if (pService != nullptr) {
             pCharacteristicRx->setCallbacks(new MyCallbacks());
@@ -162,6 +317,55 @@ namespace BLE_Utils {
         } else {
             logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "BLE", "Failed to create BLE service");
         }
+    }
+
+    bool handlePairingDisplay() {
+        static uint32_t displayedPasskey = 0;
+        static uint32_t displayStartedAt = 0;
+        static uint32_t lastDisplayAt = 0;
+
+        const uint32_t passkey = pairingDisplayPasskey.load(std::memory_order_acquire);
+        if (passkey == 0) {
+            displayedPasskey = 0;
+            displayStartedAt = 0;
+            lastDisplayAt = 0;
+            return false;
+        }
+
+        const uint32_t now = millis();
+        const bool isNewPasskey = passkey != displayedPasskey;
+        if (isNewPasskey) {
+            displayedPasskey = passkey;
+            displayStartedAt = now;
+        }
+
+        if (now - displayStartedAt >= BLE_PAIRING_DISPLAY_TIMEOUT_MS) {
+            uint32_t expectedPasskey = passkey;
+            pairingDisplayPasskey.compare_exchange_strong(
+                expectedPasskey, 0, std::memory_order_acq_rel);
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "BLE Security",
+                       "Pairing PIN display timed out");
+            displayedPasskey = 0;
+            displayStartedAt = 0;
+            lastDisplayAt = 0;
+            return false;
+        }
+
+        if (!displayState) {
+            displayToggle(true);
+            displayState = true;
+        }
+        displayTime = now;
+
+        if (isNewPasskey || now - lastDisplayAt >= BLE_PAIRING_DISPLAY_REFRESH_MS) {
+            char formattedPasskey[7];
+            snprintf(formattedPasskey, sizeof(formattedPasskey), "%06lu",
+                     static_cast<unsigned long>(passkey));
+            displayShow("BLE PAIR", "Enter PIN on phone", "PIN: " + String(formattedPasskey));
+            lastDisplayAt = now;
+        }
+
+        return true;
     }
 
     void sendToLoRa() {

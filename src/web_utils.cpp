@@ -17,12 +17,16 @@
  */
 
 #include <ArduinoJson.h>
+#include <SPIFFS.h>
 #include "configuration.h"
 #include "web_utils.h"
+#include "board_pinout.h"
 #include "display.h"
+#include "logger.h"
 #include "utils.h"
 
 extern Configuration               Config;
+extern logging::Logger             logger;
 
 extern const char web_index_html[] asm("_binary_data_embed_index_html_gz_start");
 extern const char web_index_html_end[] asm("_binary_data_embed_index_html_gz_end");
@@ -88,6 +92,25 @@ namespace WEB_Utils {
         request->send(200, "application/json", fileContent);
     }
 
+    // Reports which optional features are actually compiled into this board's firmware,
+    // so the (board-agnostic) web UI can hide/disable controls for features that don't exist
+    // on the connected device instead of silently accepting settings that can never apply.
+    // Add one line here (mirroring the #ifdef already used elsewhere for that feature) plus a
+    // matching data-requires-capability attribute in index.html to gate a new control.
+    void handleCapabilities(AsyncWebServerRequest *request) {
+        JsonDocument data;
+
+        #ifdef HAS_BT_CLASSIC
+            data["hasBTClassic"] = true;
+        #else
+            data["hasBTClassic"] = false;
+        #endif
+
+        String buffer;
+        serializeJson(data, buffer);
+        request->send(200, "application/json", buffer);
+    }
+
     void handleReceivedPackets(AsyncWebServerRequest *request) {
         JsonDocument data;
 
@@ -99,7 +122,7 @@ namespace WEB_Utils {
     }
 
     void handleWriteConfiguration(AsyncWebServerRequest *request) {
-        Serial.println("Got new config from www");
+        logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "Web", "Received new configuration");
 
         auto getParamStringSafe = [&](const String& name, const String& defaultValue = "") -> String {
             if (request->hasParam(name, true)) {
@@ -174,6 +197,13 @@ namespace WEB_Utils {
         Config.sendAltitude                     = request->hasParam("sendAltitude", true);
         Config.disableGPS                       = request->hasParam("disableGPS", true);
         Config.simplifiedTrackerMode            = request->hasParam("simplifiedTrackerMode", true);
+        const int requestedLogLevel             = getParamIntSafe("logLevel", Config.logLevel);
+        if (logging::LoggerLevel::isValidValue(requestedLogLevel)) {
+            Config.logLevel = requestedLogLevel;
+        } else {
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "Web",
+                       "Ignoring unsupported serial log level %d", requestedLogLevel);
+        }
 
         //  Display
         Config.display.ecoMode                  = request->hasParam("display.ecoMode", true);
@@ -187,7 +217,11 @@ namespace WEB_Utils {
         Config.bluetooth.active                 = request->hasParam("bluetooth.active", true);
         if (Config.bluetooth.active) {
             Config.bluetooth.deviceName         = getParamStringSafe("bluetooth.deviceName", Config.bluetooth.deviceName);
-            Config.bluetooth.useBLE             = request->hasParam("bluetooth.useBLE", true);
+            #ifdef HAS_BT_CLASSIC
+                Config.bluetooth.useBLE         = request->hasParam("bluetooth.useBLE", true);
+            #else
+                Config.bluetooth.useBLE         = true; // fixed as BLE - board has no Classic Bluetooth radio
+            #endif
             Config.bluetooth.useKISS            = request->hasParam("bluetooth.useKISS", true);
         }
 
@@ -253,7 +287,7 @@ namespace WEB_Utils {
         bool saveSuccess = Config.writeFile();
 
         if (saveSuccess) {
-            Serial.println("Configuration saved successfully");
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "Web", "Configuration saved successfully");
             AsyncWebServerResponse *response = request->beginResponse(302, "text/html", "");
             response->addHeader("Location", "/?success=1");
             request->send(response);
@@ -262,7 +296,7 @@ namespace WEB_Utils {
             delay(500);
             ESP.restart();
         } else {
-            Serial.println("Error saving configuration!");
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "Web", "Error saving configuration");
             String errorPage = "<!DOCTYPE html><html><head><title>Error</title></head><body>";
             errorPage += "<h1>Configuration Error:</h1>";
             errorPage += "<p>Couldn't save new configuration. Please try again.</p>";
@@ -274,6 +308,11 @@ namespace WEB_Utils {
     }
 
     void handleAction(AsyncWebServerRequest *request) {
+        if (!request->hasParam("type", false)) {
+            request->send(400, "text/plain", "Missing action type");
+            return;
+        }
+
         String type = request->getParam("type", false)->value();
 
         if (type == "send-beacon") {
@@ -282,6 +321,35 @@ namespace WEB_Utils {
             request->send(200, "text/plain", "Beacon will be sent in a while");
         } else if (type == "reboot") {
             displayToggle(false);
+            ESP.restart();
+        } else if (type == "clear-ble-bonds") {
+            File marker = SPIFFS.open("/clear_ble_bonds", FILE_WRITE);
+            if (!marker) {
+                logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "BLE Security",
+                           "Could not schedule bond reset");
+                request->send(500, "text/plain", "Could not schedule BLE bond reset");
+                return;
+            }
+
+            marker.print('1');
+            marker.close();
+
+            const bool previousWiFiState = Config.wifiAP.active;
+            Config.wifiAP.active = false;
+            if (!Config.writeFile()) {
+                Config.wifiAP.active = previousWiFiState;
+                SPIFFS.remove("/clear_ble_bonds");
+                logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "BLE Security",
+                           "Could not leave Web Configuration mode for bond reset");
+                request->send(500, "text/plain", "Could not save BLE bond reset request");
+                return;
+            }
+
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "BLE Security",
+                       "BLE bond reset scheduled for next boot");
+            request->send(200, "text/plain", "BLE bonds will be cleared after reboot");
+            displayToggle(false);
+            delay(500);
             ESP.restart();
         } else {
             request->send(404, "text/plain", "Not Found");
@@ -320,6 +388,7 @@ namespace WEB_Utils {
         //server.on("/received-packets.json", HTTP_GET, handleReceivedPackets);
         server.on("/configuration.json", HTTP_GET, handleReadConfiguration);
         server.on("/configuration.json", HTTP_POST, handleWriteConfiguration);
+        server.on("/capabilities", HTTP_GET, handleCapabilities);
         server.on("/action", HTTP_POST, handleAction);
         server.on("/style.css", HTTP_GET, handleStyle);
         server.on("/script.js", HTTP_GET, handleScript);

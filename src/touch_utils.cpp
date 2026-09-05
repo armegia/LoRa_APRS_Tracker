@@ -20,6 +20,7 @@
 #include "board_pinout.h"
 #include "button_utils.h"
 #include "touch_utils.h"
+#include "logger.h"
 
 #ifdef HAS_TOUCHSCREEN
 
@@ -27,6 +28,7 @@
     #include <TouchLib.h>
 
     extern Configuration    Config;
+    extern logging::Logger  logger;
     extern uint8_t          touchModuleAddress;
 
     TouchLib    touch(Wire, BOARD_I2C_SDA, BOARD_I2C_SCL, 0x00);
@@ -79,11 +81,11 @@
                 if (touchButtonPressed(x, y, touchButtons_0[i].Xmin, touchButtons_0[i].Xmax, touchButtons_0[i].Ymin, touchButtons_0[i].Ymax)) {
 
                     if (touchButtons_0[i].action != nullptr && touchButtons_0[i].action != lastCalledAction) {                      // Call the action function associated with the button
-                        Serial.println(touchButtons_0[i].label + " pressed");
+                        logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "Touch", "%s pressed", touchButtons_0[i].label.c_str());
                         touchButtons_0[i].action();                     // Call the function pointer
                         lastCalledAction = touchButtons_0[i].action;    // Update the last called action
                     } else {
-                        Serial.println("No action assigned to this button!");
+                        logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "Touch", "No action assigned to button");
                     }
                 }
             }
@@ -111,7 +113,7 @@
                         touch = TouchLib(Wire, BOARD_I2C_SDA, BOARD_I2C_SCL, GT911_SLAVE_ADDRESS1);
                         touch.init();
                     } else {
-                        Serial.println("No Touch Module Address found");
+                        logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "Touch", "No touch module address found");
                     }
                 }
             }
