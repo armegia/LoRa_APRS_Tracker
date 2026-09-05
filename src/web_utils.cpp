@@ -27,6 +27,7 @@
 
 extern Configuration               Config;
 extern logging::Logger             logger;
+extern bool                        bluetoothActive;
 
 extern const char web_index_html[] asm("_binary_data_embed_index_html_gz_start");
 extern const char web_index_html_end[] asm("_binary_data_embed_index_html_gz_end");
@@ -105,6 +106,12 @@ namespace WEB_Utils {
         #else
             data["hasBTClassic"] = false;
         #endif
+
+        // Unlike hasBTClassic (a compile-time board capability), this reflects whether BLE is
+        // actually the active mode right now, matching the exact condition BLE_Utils::setup()
+        // and the clear-ble-bonds action guard use - so "Clear BLE bonds" isn't shown/accepted
+        // when there is no running BLE stack to act on.
+        data["hasBLE"] = bluetoothActive && Config.bluetooth.useBLE;
 
         String buffer;
         serializeJson(data, buffer);
@@ -323,24 +330,22 @@ namespace WEB_Utils {
             displayToggle(false);
             ESP.restart();
         } else if (type == "clear-ble-bonds") {
-            File marker = SPIFFS.open("/clear_ble_bonds", FILE_WRITE);
-            if (!marker) {
-                logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "BLE Security",
-                           "Could not schedule bond reset");
-                request->send(500, "text/plain", "Could not schedule BLE bond reset");
+            if (!(bluetoothActive && Config.bluetooth.useBLE)) {
+                logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "BLE Security",
+                           "Ignoring bond reset request: BLE is not the active mode");
+                request->send(400, "text/plain", "BLE is not active on this device");
                 return;
             }
 
-            marker.print('1');
-            marker.close();
-
+            const bool previousBondResetPending = Config.bluetooth.bondResetPending;
             const bool previousWiFiState = Config.wifiAP.active;
+            Config.bluetooth.bondResetPending = true;
             Config.wifiAP.active = false;
             if (!Config.writeFile()) {
+                Config.bluetooth.bondResetPending = previousBondResetPending;
                 Config.wifiAP.active = previousWiFiState;
-                SPIFFS.remove("/clear_ble_bonds");
                 logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "BLE Security",
-                           "Could not leave Web Configuration mode for bond reset");
+                           "Could not save BLE bond reset request");
                 request->send(500, "text/plain", "Could not save BLE bond reset request");
                 return;
             }

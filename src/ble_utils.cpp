@@ -17,7 +17,6 @@
  */
 
 #include <NimBLEDevice.h>
-#include <SPIFFS.h>
 #include <atomic>
 #include "configuration.h"
 #include "lora_utils.h"
@@ -28,7 +27,6 @@
 
 #define BLE_CHUNK_SIZE  512
 #define MAX_KISS_BUFFER 1024
-#define BLE_BOND_RESET_FILE "/clear_ble_bonds"
 #define BLE_PAIRING_PIN_MIN 100000UL
 #define BLE_PAIRING_PIN_RANGE 900000UL
 #define NIMBLE_PASSKEY_CALLBACK_SENTINEL 123456UL
@@ -139,12 +137,28 @@ class MyServerCallbacks : public NimBLEServerCallbacks {
     }
 
     void onConnect(NimBLEServer* pServer, ble_gap_conn_desc* desc) override {
-        (void)pServer;
+        // The pairing-PIN state below (pairingPasskey/pairingDisplayPasskey) is a single shared
+        // value with no per-connection keying, and the rest of this file already assumes a
+        // single BLE peer (bluetoothConnected, shouldSendBLEtoLoRa, kissSerialBuffer are all
+        // single-connection globals). NimBLE-Arduino 1.4.1 has no runtime max-connections
+        // setter (that's a 2.x addition), so enforce single-connection at the application layer:
+        // reject anything beyond the first.
+        if (pServer->getConnectedCount() > 1) {
+            logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "BLE",
+                       "Rejecting extra connection: only one BLE peer is supported at a time");
+            pServer->disconnect(desc->conn_handle);
+            return;
+        }
+
         bluetoothConnected = true;
-        const std::string peerAddress = NimBLEAddress(desc->peer_id_addr).toString();
+        // peer_id_addr is the resolved identity address, which for a first-time connection
+        // using a private/random address may not be resolved yet at this point; peer_ota_addr
+        // is the address actually used over the air and is always valid here, so log both.
+        const std::string peerIdAddress = NimBLEAddress(desc->peer_id_addr).toString();
+        const std::string peerOtaAddress = NimBLEAddress(desc->peer_ota_addr).toString();
         logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "BLE",
-                   "Client connected: %s (encrypted=%u authenticated=%u bonded=%u)",
-                   peerAddress.c_str(), desc->sec_state.encrypted,
+                   "Client connected: id=%s ota=%s (encrypted=%u authenticated=%u bonded=%u)",
+                   peerIdAddress.c_str(), peerOtaAddress.c_str(), desc->sec_state.encrypted,
                    desc->sec_state.authenticated, desc->sec_state.bonded);
 
         preparePairingPasskey();
@@ -265,15 +279,15 @@ namespace BLE_Utils {
         NimBLEDevice::setSecurityRespKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
         NimBLEDevice::setCustomGapHandler(logBleGapSecurityEvent);
 
-        if (SPIFFS.exists(BLE_BOND_RESET_FILE)) {
+        if (Config.bluetooth.bondResetPending) {
             const int previousBonds = NimBLEDevice::getNumBonds();
             NimBLEDevice::deleteAllBonds();
-            const bool markerRemoved = SPIFFS.remove(BLE_BOND_RESET_FILE);
+            Config.bluetooth.bondResetPending = false;
             logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "BLE Security",
                        "Cleared %d stored bond(s)", previousBonds);
-            if (!markerRemoved) {
+            if (!Config.writeFile()) {
                 logger.log(logging::LoggerLevel::LOGGER_LEVEL_ERROR, "BLE Security",
-                           "Could not remove bond-reset marker");
+                           "Could not clear bond-reset flag; bonds were already deleted");
             }
         }
 
@@ -341,13 +355,18 @@ namespace BLE_Utils {
 
         if (now - displayStartedAt >= BLE_PAIRING_DISPLAY_TIMEOUT_MS) {
             uint32_t expectedPasskey = passkey;
-            pairingDisplayPasskey.compare_exchange_strong(
-                expectedPasskey, 0, std::memory_order_acq_rel);
-            logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "BLE Security",
-                       "Pairing PIN display timed out");
-            displayedPasskey = 0;
-            displayStartedAt = 0;
-            lastDisplayAt = 0;
+            // If this CAS fails, a new passkey was published concurrently (a fresh pairing
+            // attempt) between the load above and here; that new value is now current, so don't
+            // log a stale timeout or reset the display bookkeeping out from under it. The next
+            // call will see it as a new passkey and start its own display/timeout cycle.
+            if (pairingDisplayPasskey.compare_exchange_strong(
+                    expectedPasskey, 0, std::memory_order_acq_rel)) {
+                logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "BLE Security",
+                           "Pairing PIN display timed out");
+                displayedPasskey = 0;
+                displayStartedAt = 0;
+                lastDisplayAt = 0;
+            }
             return false;
         }
 
