@@ -118,6 +118,62 @@ reconnected with `encrypted=1 authenticated=1 bonded=1 keySize=16 storedBonds=1`
 re-pair, or authorization prompt. Two manually sent position frames produced paired `BLE Tx`
 and `LoRa Tx` records and appeared on the T-Beam display. Persistent bonding is confirmed.
 
+### Random pairing PIN follow-up — DONE, HARDWARE VERIFIED (2026-09-05)
+
+The fixed `123456` PIN is replaced by a hardware-random six-digit PIN for each physical BLE
+connection. Existing bonded peers should restore their saved keys without showing or using the
+new PIN; an unbonded peer receives the PIN prepared immediately before `startSecurity()`.
+
+The NimBLE host callbacks do not access the display. They publish the requested PIN through
+atomic integer state, and `BLE_Utils::handlePairingDisplay()` performs all formatting and I2C
+display work from the Arduino main loop. While active, it shows `BLE PAIR` and the PIN,
+refreshes once per second, suppresses the normal menu redraw, and wakes/holds on a display that
+eco mode had switched off. Authentication completion, disconnect, or a 60-second UI timeout
+clears the pairing screen. The timeout does not alter the BLE procedure itself; after it clears,
+the normal configured display timeout resumes.
+
+The hardware acceptance sequence was: forget both bonds, confirm the screen PIN matches Android
+pairing, verify authenticated bonding and KISS/LoRa traffic, reboot without forgetting, verify
+silent bonded reconnection and traffic, then repeat a clean pairing with a second random PIN.
+
+**First hardware attempt:** failed safely with `storedBonds=0`. NimBLE used the configured
+random passkey internally, so entering the old `123456` produced status 1028 (confirm-value
+mismatch), but no PIN appeared. NimBLE-Arduino 1.4.1's `NimBLEServer.cpp` only invokes
+`onPassKeyRequest()` for `DISPLAY_ONLY` when its configured passkey equals the library's
+`123456` compatibility sentinel, and its separate GAP listener did not receive the consumed
+passkey action. The implementation now leaves that sentinel configured and returns/publishes
+the per-connection random PIN from `onPassKeyRequest()`. Here, `123456` is only an internal
+library switch, not the pairing PIN, except for the one-in-900,000 chance that the RNG itself
+selects that number.
+
+**Second hardware attempt:** random PIN `118282` appeared in the serial log and on the OLED,
+and Android completed with `encrypted=1 authenticated=1 bonded=1 keySize=16`. The immediate
+callback still reported `storedBonds=0`, which may precede NimBLE's asynchronous NVS write and
+must be checked after reset. The size-2 `BLE PAIRING` OLED header wrapped because it was 132
+pixels wide on a 128-pixel display and partially obscured the PIN. It is shortened to the
+non-wrapping `BLE PAIR`, with the final line explicitly formatted as `PIN: NNNNNN`.
+
+Further testing of that bond passed before reset. The peer disconnected and reconnected under
+resolved identity `94:45:60:54:a7:4b`; encryption restored in about 575 ms with no passkey
+request, and the completion callback then reported `storedBonds=1`. A position and an APRS
+message traveled from APRSdroid over BLE and were transmitted over LoRa. The second tracker's
+ACK was received over LoRa and delivered back to APRSdroid over BLE. This verifies persistent
+storage, silent bonded reconnection within the same boot, and bidirectional KISS traffic. The
+remaining persistence test is reconnection after the screen-fix flash/reset.
+
+**Post-flash/reset persistence passed:** after flashing the screen correction (which resets the
+ESP32 but preserves NVS), the same identity `94:45:60:54:a7:4b` reconnected without a passkey
+request. Encryption restored in about 573 ms with `encrypted=1 authenticated=1 bonded=1
+keySize=16 storedBonds=1`, and another APRSdroid position traveled through `BLE Tx` and
+`LoRa Tx`. Bond persistence across a firmware upload/reset is verified. Only a fresh pairing
+remained to visually verify the non-wrapping layout and a second random PIN.
+
+**Final clean pairing passed:** the log-to-file monitor captured random PIN `748043`, followed
+by successful encryption and `encrypted=1 authenticated=1 bonded=1 keySize=16`, with no warning
+or error records. This differs from the first random PIN (`118282`), and the clean pairing was
+completed using the corrected non-wrapping `BLE PAIR` screen. The random-PIN feature and its
+hardware acceptance sequence are complete.
+
 ## 1. Dynamically selectable logging (no reflash required) — DONE (syslog deferred)
 
 **Problem (was):** log level was fixed at compile time via a commented-out `#define DEBUG` in

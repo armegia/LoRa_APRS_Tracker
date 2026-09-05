@@ -233,6 +233,8 @@ void loop() {
     STATION_Utils::checkListenedStationsByTimeAndDelete();
 
     lastTx = millis() - lastTxTime;
+    const bool blePairingDisplayActive = bluetoothActive && Config.bluetooth.useBLE &&
+                                         BLE_Utils::handlePairingDisplay();
     if (gpsIsActive) {
         GPS_Utils::getData();
         bool gps_time_update = gps.time.isUpdated();
@@ -253,8 +255,10 @@ void loop() {
         if (gps_time_update) SMARTBEACON_Utils::checkInterval(currentSpeed);
 
         if (millis() - refreshDisplayTime >= 1000 || gps_time_update) {
-            GPS_Utils::checkStartUpFrames();
-            MENU_Utils::showOnScreen();
+            if (!blePairingDisplayActive) {
+                GPS_Utils::checkStartUpFrames();
+                MENU_Utils::showOnScreen();
+            }
             refreshDisplayTime = millis();
         }
         SLEEP_Utils::checkIfGPSShouldSleep();
@@ -264,7 +268,7 @@ void loop() {
         }
         STATION_Utils::checkStandingUpdateTime();
         if (millis() - refreshDisplayTime >= 1000) {
-            MENU_Utils::showOnScreen();
+            if (!blePairingDisplayActive) MENU_Utils::showOnScreen();
             refreshDisplayTime = millis();
         }
     }
