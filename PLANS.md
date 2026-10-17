@@ -19,6 +19,11 @@ being deliberately left alone, not treated as bugs to fix.
 
 ## Upstream 4.0.1 merged on top of the BLE work (2026-10-17)
 
+**Decision (2026-10-17): the upstream PR will not be opened.** It mixed too many concerns
+(logger, diagnostics, BLE bonding, capability gating) for one review. `PULL_REQUEST_DRAFT.md`,
+`PR_REVIEW_NOTES.md` and the `pr/diagnostics-ble-bonding` branch are kept as a historical
+record only; this fork's `main` now carries the work on top of upstream instead.
+
 Branch `merge/upstream-4.0.1-ble` = local `main` (BLE bonding + logger + capabilities) merged
 with `origin/main` @ `5bb2adc` (upstream v4.0.1, 35 commits). Upstream did **not** touch BLE
 pairing/security (only RPC_MicroTracker status LEDs in the BLE/BT callbacks, carried into our
@@ -51,6 +56,14 @@ Added `Utils::getResetReason()` + a `Reset reason: <text> (<esp_reset_reason_t>)
 before `Setup Done!`, so future unexplained reboots are classifiable without a live capture.
 The ROM code is included because on this core `esp_reset_reason()` returns `ESP_RST_UNKNOWN`
 for native-USB resets (ROM `rst:0x15`/`0x16`: esptool, or a port closed with DTR/RTS up).
+Observed: esptool → `native USB reset (rom rst:0x15)`, RST button → `power-on / RST button
+(rom rst:0x01)`, web Save → `software restart (rom rst:0x0C)`. A WEB-CONF boot never logs the
+line (setup stays in `WIFI_Utils::checkIfWiFiAP()`'s loop), but its ROM `rst:0xc` is visible.
+
+User test session (2026-10-17, after the reset-reason flash): APRSdroid reconnects with the
+stored bond after RST / Save / its own disconnect, several positions BLE → LoRa (one with
+CAD detecting a busy channel: `CAD/DIFS failed, retry...`, TX 0.5 s later), and EA4HXZ-2's
+LoRa beacon (-32 dBm, SNR 5 dB) forwarded to the phone (`BLE Rx`).
 
 **Known cosmetic issue (not fixed):** the native-USB serial output occasionally loses a run of
 bytes in the middle of a line during the end-of-setup log burst (~5.4 s), e.g. `Reset reason:
