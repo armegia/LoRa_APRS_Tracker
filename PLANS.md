@@ -40,6 +40,25 @@ mean 22 dBm and now means 20 dBm); CAD listen-before-talk (`other.cadActive`, de
 blocks TX up to 10 s); GPS baud autodetect (`/gps_baud.dat`); APRSPacketLib 1.0.4 → 1.0.10.
 First boot after flashing rewrites the config once (new `cadActive` field) and reboots.
 
+Verified on the Supreme (2026-10-17, enumerated as COM71): boots clean, GPS autodetect 9600,
+SX1262 init OK, stored BLE bond survives flashing and resets (phone reconnects encrypted +
+authenticated + bonded in ~1-2 s, no PIN), web config save works (power / low-battery
+threshold changed, no `Power adjusted` warning), and an APRSdroid position goes BLE → CAD →
+LoRa (`BLE Tx` → `LoRa Tx --->` 1.5 s later: 1 s "BLE Tx" screen + ~0.5 s CAD/backoff). The
+coredump partition was empty. Two apparent "spontaneous" reboots were traced to our own serial
+capture script closing the port with DTR/RTS asserted (see CLAUDE.md) — not firmware.
+Added `Utils::getResetReason()` + a `Reset reason: <text> (<esp_reset_reason_t>)` log line just
+before `Setup Done!`, so future unexplained reboots are classifiable without a live capture.
+The ROM code is included because on this core `esp_reset_reason()` returns `ESP_RST_UNKNOWN`
+for native-USB resets (ROM `rst:0x15`/`0x16`: esptool, or a port closed with DTR/RTS up).
+
+**Known cosmetic issue (not fixed):** the native-USB serial output occasionally loses a run of
+bytes in the middle of a line during the end-of-setup log burst (~5.4 s), e.g. `Reset reason:
+native USB reset (esptool / DTrom rst:0x15)` or `[DEBUG[INFO]...`. The logger writes each record
+with a single `write()` under its mutex, so the loss is below it (HWCDC / USB-Serial-JTAG on
+arduino-esp32 2.0.17). Not caused by the 80 MHz clock switch — moving the line before
+`lowerCpuFrequency()` didn't stop it.
+
 ## Known issues — documented, explicitly NOT being fixed yet
 
 **TNC2 mode over BLE doesn't work in practice (2026-09-04).** The firmware does implement it —
@@ -427,7 +446,7 @@ left for a future, separate change rather than bundled into this PR:
 
 ## Debugging setup reference
 
-- Board enumerates as **COM70** (native ESP32-S3 USB CDC, `ARDUINO_USB_CDC_ON_BOOT=1`).
+- Board enumerates as **COM70** (seen as **COM71** on 2026-10-17; same MAC `64:e8:33:5e:2d:bc`) (native ESP32-S3 USB CDC, `ARDUINO_USB_CDC_ON_BOOT=1`).
 - `pio device monitor -e ttgo_t_beam_s3_SUPREME_v3 --port COM70` or VS Code's PlatformIO
   serial monitor icon; both pick up `monitor_speed=115200` +
   `monitor_filters=esp32_exception_decoder` from `platformio.ini`.

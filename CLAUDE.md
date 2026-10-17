@@ -38,6 +38,14 @@ busy-port/`PermissionError` otherwise. Quick check (PowerShell):
 try { $p = New-Object System.IO.Ports.SerialPort COMx; $p.Open(); $p.Close(); "FREE" } catch { "BUSY" }
 ```
 
+**Closing a serial port with DTR/RTS asserted resets ESP32-S3 native-USB boards** (e.g. the
+T-Beam Supreme): Windows drops both lines on close and the USB-Serial/JTAG peripheral treats
+that transition as a chip reset — confirmed by A/B test. pyserial asserts both by default, so
+any ad-hoc capture script must create `serial.Serial()` unopened, set `dtr = rts = False`, then
+`open()`. (.NET `SerialPort`, as in the check above, defaults both to off and is safe.) A
+physical RST press re-enumerates the USB port and loses the first ~0.8 s of output, ROM `rst:`
+line included — the firmware logs `Reset reason: ...` just before `Setup Done!` for that reason.
+
 `common_settings.ini` sets `-Werror -Wall` globally — any new compiler warning fails the
 build, not just warns.
 
@@ -99,7 +107,7 @@ requested destination and scope first.
 
 `PLANS.md` at the repo root tracks in-progress investigation notes, decisions (including
 things tried and deliberately reverted), and a prioritized backlog from ongoing work on a
-LilyGO T-Beam Supreme v3 (`ttgo_t_beam_s3_SUPREME_v3`, COM70 in that environment, native
+LilyGO T-Beam Supreme v3 (`ttgo_t_beam_s3_SUPREME_v3`, COM70 or COM71 in that environment — check `pio device list`, native
 ESP32-S3 USB-CDC — no BOOT-button bootloader entry needed, auto-reset works). It's a living,
 session-scoped doc, not a substitute for reading current code — check it for context on *why*
 something looks mid-flight, but verify against actual code state before relying on it.
