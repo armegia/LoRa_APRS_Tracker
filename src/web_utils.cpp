@@ -1,4 +1,4 @@
-/* Copyright (C) 2025 Ricardo Guzman - CA2RXU
+/* Copyright (C) 2026 Ricardo Guzman - CA2RXU
  *
  * This file is part of LoRa APRS Tracker.
  *
@@ -19,6 +19,8 @@
 #include <ArduinoJson.h>
 #include <SPIFFS.h>
 #include "configuration.h"
+#include "board_pinout.h"
+#include "lora_utils.h"
 #include "web_utils.h"
 #include "board_pinout.h"
 #include "display.h"
@@ -203,6 +205,7 @@ namespace WEB_Utils {
         Config.rememberStationTime              = getParamIntSafe("rememberStationTime", Config.rememberStationTime);
         Config.sendAltitude                     = request->hasParam("sendAltitude", true);
         Config.disableGPS                       = request->hasParam("disableGPS", true);
+        Config.cadActive                        = request->hasParam("cadActive", true);
         Config.simplifiedTrackerMode            = request->hasParam("simplifiedTrackerMode", true);
         const int requestedLogLevel             = getParamIntSafe("logLevel", Config.logLevel);
         if (logging::LoggerLevel::isValidValue(requestedLogLevel)) {
@@ -225,11 +228,11 @@ namespace WEB_Utils {
         if (Config.bluetooth.active) {
             Config.bluetooth.deviceName         = getParamStringSafe("bluetooth.deviceName", Config.bluetooth.deviceName);
             #ifdef HAS_BT_CLASSIC
-                Config.bluetooth.useBLE         = request->hasParam("bluetooth.useBLE", true);
+                Config.bluetooth.useBLE         = getParamIntSafe("bluetooth.useBLE", Config.bluetooth.useBLE) == 1;
             #else
                 Config.bluetooth.useBLE         = true; // fixed as BLE - board has no Classic Bluetooth radio
             #endif
-            Config.bluetooth.useKISS            = request->hasParam("bluetooth.useKISS", true);
+            Config.bluetooth.useKISS            = getParamIntSafe("bluetooth.useKISS", Config.bluetooth.useKISS) == 1;
         }
 
         // LORA
@@ -238,6 +241,7 @@ namespace WEB_Utils {
             Config.loraTypes[i].spreadingFactor = getParamIntSafe("lora." + String(i) + ".spreadingFactor", Config.loraTypes[i].spreadingFactor);
             Config.loraTypes[i].codingRate4     = getParamIntSafe("lora." + String(i) + ".codingRate4", Config.loraTypes[i].codingRate4);
             Config.loraTypes[i].signalBandwidth = getParamIntSafe("lora." + String(i) + ".signalBandwidth", Config.loraTypes[i].signalBandwidth);
+            Config.loraTypes[i].power           = LoRa_Utils::validPower(getParamIntSafe("lora." + String(i) + ".power", Config.loraTypes[i].power));  // saved as the power the radio chip really uses
         }
 
         //  Battery

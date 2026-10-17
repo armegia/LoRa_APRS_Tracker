@@ -1,4 +1,4 @@
-/* Copyright (C) 2025 Ricardo Guzman - CA2RXU
+/* Copyright (C) 2026 Ricardo Guzman - CA2RXU
  *
  * This file is part of LoRa APRS Tracker.
  *
@@ -145,6 +145,7 @@ public:
     int     standingUpdateTime;
     bool    sendAltitude;
     bool    disableGPS;
+    bool    cadActive;
     int     logLevel;
 
     void setDefaultValues();

@@ -1,4 +1,4 @@
-/* Copyright (C) 2025 Ricardo Guzman - CA2RXU
+/* Copyright (C) 2026 Ricardo Guzman - CA2RXU
  *
  * This file is part of LoRa APRS Tracker.
  *
@@ -119,6 +119,12 @@ namespace MENU_Utils {
                 return "Mid";
             }
         #endif
+    }
+
+    String padForDisplay(const String& text) {      // left-aligned, 9 chars wide (callsign column on screen)
+        char buffer[10];
+        snprintf(buffer, sizeof(buffer), "%-9s", text.c_str());
+        return String(buffer);
     }
 
     void showOnScreen() {
@@ -464,10 +470,7 @@ namespace MENU_Utils {
 
             case 400:   //4.Stations ---> Packet Decoder
                 if (lastReceivedPacket.sender != currentBeacon->callsign) {
-                    String firstLineDecoder = lastReceivedPacket.sender;
-                    for (int i = firstLineDecoder.length(); i < 9; i++) {
-                        firstLineDecoder += ' ';
-                    }
+                    String firstLineDecoder = padForDisplay(lastReceivedPacket.sender);
                     firstLineDecoder += lastReceivedPacket.symbol;
 
                     if (lastReceivedPacket.type == 0 || lastReceivedPacket.type == 4) {      // gps and Mic-E gps
@@ -719,9 +722,7 @@ namespace MENU_Utils {
 
                 firstRowMainMenu = currentBeacon->callsign;
                 if (Config.display.showSymbol) {
-                    for (int j = firstRowMainMenu.length(); j < 9; j++) {
-                        firstRowMainMenu += " ";
-                    }
+                    firstRowMainMenu = padForDisplay(firstRowMainMenu);
                     if (!symbolAvailable) {
                         firstRowMainMenu += currentBeacon->symbol;
                     }
@@ -825,7 +826,7 @@ namespace MENU_Utils {
 
                 if (batteryConnected) {
                     String batteryVoltage = BATTERY_Utils::getBatteryInfoVoltage();
-                    #if defined(TTGO_T_Beam_V0_7) || defined(TTGO_T_LORA32_V2_1_GPS) || defined(TTGO_T_LORA32_V2_1_GPS_915) || defined(TTGO_T_LORA32_V2_1_TNC) || defined(TTGO_T_LORA32_V2_1_TNC_915) || defined(HELTEC_V3_GPS) || defined(HELTEC_V3_TNC) || defined(HELTEC_V3_2_GPS) || defined(HELTEC_V3_2_TNC) || defined(HELTEC_WIRELESS_TRACKER) || defined(HELTEC_WSL_V3_GPS_DISPLAY) || defined(TTGO_T_DECK_GPS) || defined(TTGO_T_DECK_PLUS) || defined(LIGHTTRACKER_PLUS_1_0) || defined(TTGO_LORA32_T3S3_V1_2_GPS)
+                    #if defined(TTGO_T_Beam_V0_7) || defined(TTGO_LORA32_V2_1_GPS) || defined(TTGO_LORA32_V2_1_915_GPS) || defined(TTGO_LORA32_V2_1_TNC) || defined(TTGO_LORA32_V2_1_915_TNC) || defined(HELTEC_V2_GPS) || defined(HELTEC_V2_GPS_915) || defined(HELTEC_V2_TNC) || defined(HELTEC_V3_GPS) || defined(HELTEC_V3_TNC) || defined(HELTEC_V3_2_GPS) || defined(HELTEC_V3_2_TNC) || defined(HELTEC_WIRELESS_TRACKER) || defined(HELTEC_WSL_V3_GPS_DISPLAY) || defined(HELTEC_WSL_V3_TNC) || defined(TTGO_T_DECK_GPS) || defined(TTGO_T_DECK_PLUS) || defined(LIGHTTRACKER_PLUS_1_0) || defined(TTGO_LORA32_T3S3_V1_2_GPS) || defined(TTGO_T_BEAM_1W) || defined(Hydra_1W_LoRa_E22_400M30S_GPS)
                         sixthRowMainMenu = "Battery: ";
                         sixthRowMainMenu += batteryVoltage;
                         sixthRowMainMenu += "V   ";

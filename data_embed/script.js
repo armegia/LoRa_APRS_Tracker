@@ -84,108 +84,125 @@ function loadSettings(settings) {
 
     settings.beacons.forEach((beacons, index) => {
         const beaconElement = document.createElement("div");
-        beaconElement.classList.add("row", "beacons", "border-bottom", "py-2");
+        beaconElement.classList.add("row", "g-0", "beacons", "border-bottom", "py-2");
 
         beaconElement.innerHTML = `
-            <div class="col-1 px-1 mb-2 d-flex align-items-center">
-                <strong>${index + 1})</strong> <!-- Adding numbering here -->
+            <div class="d-flex align-items-start pt-3" style="flex: 0 0 50px; width: 50px;">
+                <strong>${index + 1})</strong>
             </div>
-            <div class="form-floating col-6 col-md-3 px-1 mb-2">
-                <input 
-                    type="text" 
-                    class="form-control form-control-sm" 
-                    name="beacons.${index}.callsign" 
-                    id="beacons.${index}.callsign" 
-                    value="${beacons.callsign}"
-                    oninput="this.value = this.value.toUpperCase();">
-                <label for="beacons.${index}.callsign">Callsign</label>
+            <div class="col">
+                <div class="row g-2 mb-2">
+                    <div class="form-floating col-12 col-md-6">
+                        <input 
+                            type="text" 
+                            class="form-control form-control-sm" 
+                            name="beacons.${index}.callsign" 
+                            id="beacons.${index}.callsign" 
+                            required
+                            value="${beacons.callsign}"
+                            oninput="this.value = this.value.toUpperCase();">
+                        <label for="beacons.${index}.callsign">Callsign</label>
+                    </div>
+                    <div class="form-floating col-4 col-md-2">
+                        <input 
+                            type="text" 
+                            class="form-control form-control-sm" 
+                            name="beacons.${index}.symbol" 
+                            id="beacons.${index}.symbol" 
+                            value="${beacons.symbol}">
+                        <label for="beacons.${index}.symbol">Symbol</label>
+                    </div>
+                    <div class="form-floating col-4 col-md-2">
+                        <input 
+                            type="text" 
+                            class="form-control form-control-sm" 
+                            name="beacons.${index}.overlay" 
+                            id="beacons.${index}.overlay" 
+                            value="${beacons.overlay}">
+                        <label for="beacons.${index}.overlay">Overlay</label>
+                    </div>
+                    <div class="form-floating col-4 col-md-2">
+                        <input 
+                            type="text" 
+                            class="form-control form-control-sm" 
+                            name="beacons.${index}.micE" 
+                            id="beacons.${index}.micE" 
+                            value="${beacons.micE}">
+                        <label for="beacons.${index}.micE">Mic-E</label>
+                    </div>
+                </div>
+                <div class="row g-2 mb-2">
+                    <div class="form-floating col-12">
+                        <input 
+                            type="text" 
+                            class="form-control form-control-sm" 
+                            name="beacons.${index}.comment" 
+                            id="beacons.${index}.comment" 
+                            value="${beacons.comment}">
+                        <label for="beacons.${index}.comment">Comment</label>
+                    </div>
+                </div>
+                <div class="row g-2 mb-2">
+                    <div class="col-12 col-sm-6">
+                        <div class="form-check form-switch">
+                            <input 
+                                class="form-check-input" 
+                                type="checkbox" 
+                                name="beacons.${index}.smartBeaconActive" 
+                                id="beacons.${index}.smartBeaconActive" 
+                                value="1" 
+                                ${beacons.smartBeaconActive ? 'checked' : ''}>
+                            <label class="form-check-label" for="beacons.${index}.smartBeaconActive">
+                                Smart Beacon Active
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-12 col-sm-6">
+                        <div class="form-check form-switch">
+                            <input 
+                                class="form-check-input" 
+                                type="checkbox" 
+                                name="beacons.${index}.gpsEcoMode" 
+                                id="beacons.${index}.gpsEcoMode"
+                                value="1"
+                                ${beacons.gpsEcoMode ? 'checked' : ''}>
+                            <label class="form-check-label" for="beacons.${index}.gpsEcoMode">
+                                GPS Eco Mode
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="row g-2 mb-2">
+                    <div class="col-12 col-md-6">
+                        <label for="beacons.${index}.smartBeaconSetting" class="form-label"><small>Smart Beacon Setting</small></label>
+                        <select name="beacons.${index}.smartBeaconSetting" id="beacons.${index}.smartBeaconSetting" class="form-control">
+                            <option value="0" ${beacons.smartBeaconSetting == 0 ? 'selected' : ''}>Human/Runner (Slow Speed)</option>
+                            <option value="1" ${beacons.smartBeaconSetting == 1 ? 'selected' : ''}>Bicycle (Mid Speed)</option>
+                            <option value="2" ${beacons.smartBeaconSetting == 2 ? 'selected' : ''}>Car/Motorcycle (Fast Speed)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row g-2">
+                    <div class="form-floating col-12 col-sm-6">
+                        <input 
+                            type="text" 
+                            class="form-control form-control-sm" 
+                            name="beacons.${index}.status" 
+                            id="beacons.${index}.status" 
+                            value="${beacons.status}">
+                        <label for="beacons.${index}.status">Status</label>
+                    </div>
+                    <div class="form-floating col-12 col-sm-6">
+                        <input 
+                            type="text" 
+                            class="form-control form-control-sm" 
+                            name="beacons.${index}.profileLabel" 
+                            id="beacons.${index}.profileLabel" 
+                            value="${beacons.profileLabel}">
+                        <label for="beacons.${index}.profileLabel">Profile Label</label>
+                    </div>
+                </div>
             </div>
-            <div class="form-floating col-6 col-md-2 px-1 mb-2">
-                <input 
-                    type="text" 
-                    class="form-control form-control-sm" 
-                    name="beacons.${index}.symbol" 
-                    id="beacons.${index}.symbol" 
-                    value="${beacons.symbol}">
-                <label for="beacons.${index}.symbol">Symbol</label>
-            </div>
-            <div class="form-floating col-6 col-md-2 px-1 mb-2">
-                <input 
-                    type="text" 
-                    class="form-control form-control-sm" 
-                    name="beacons.${index}.overlay" 
-                    id="beacons.${index}.overlay" 
-                    value="${beacons.overlay}">
-                <label for="beacons.${index}.overlay">Overlay</label>
-            </div>
-            <div class="form-floating col-6 col-md-2 px-1 mb-2">
-                <input 
-                    type="text" 
-                    class="form-control form-control-sm" 
-                    name="beacons.${index}.micE" 
-                    id="beacons.${index}.micE" 
-                    value="${beacons.micE}">
-                <label for="beacons.${index}.micE">Mic-E</label>
-            </div>
-            <div class="form-floating col-12 col-md-9 px-1 mb-2" style="margin-left: 50px;">
-                <input 
-                    type="text" 
-                    class="form-control form-control-sm" 
-                    name="beacons.${index}.comment" 
-                    id="beacons.${index}.comment" 
-                    value="${beacons.comment}">
-                <label for="beacons.${index}.comment">Comment</label>
-            </div>
-            <div class="form-check form-switch col-6 col-md-5 px-1 mb-2" style="margin-left: 90px;">
-                <input 
-                    class="form-check-input" 
-                    type="checkbox" 
-                    name="beacons.${index}.smartBeaconActive" 
-                    id="beacons.${index}.smartBeaconActive" 
-                    value="1" 
-                    ${beacons.smartBeaconActive ? 'checked' : ''}>
-                <label class="form-check-label" for="beacons.${index}.smartBeaconActive">
-                    Smart Beacon Active
-                </label>
-            </div>
-            <div class="form-check form-switch col-6 col-md-3 px-1 mb-2">
-                <input 
-                    class="form-check-input" 
-                    type="checkbox" 
-                    name="beacons.${index}.gpsEcoMode" 
-                    id="beacons.${index}.gpsEcoMode"
-                    value="1"
-                    ${beacons.gpsEcoMode ? 'checked' : ''}>
-                <label class="form-check-label" for="beacons.${index}.gpsEcoMode">
-                    GPS Eco Mode
-                </label>
-            </div>
-            <div class="form-check form-switch col-6 col-md-5 px-1 mb-2" style="margin-left: 50px;">
-                <label for="beacons.${index}.smartBeaconSetting" class="form-label"><small>Smart Beacon Setting</small></label>
-                <select name="beacons.${index}.smartBeaconSetting" id="beacons.${index}.smartBeaconSetting" class="form-control">
-                    <option value="0" ${beacons.smartBeaconSetting == 0 ? 'selected' : ''}>Human/Runner (Slow Speed)</option>
-                    <option value="1" ${beacons.smartBeaconSetting == 1 ? 'selected' : ''}>Bicycle (Mid Speed)</option>
-                    <option value="2" ${beacons.smartBeaconSetting == 2 ? 'selected' : ''}>Car/Motorcycle (Fast Speed)</option>
-                </select>
-            </div>
-            <div class="form-floating col-12 col-md-9 px-1 mb-2" style="margin-left: 50px;">
-                 <input 
-                     type="text" 
-                     class="form-control form-control-sm" 
-                     name="beacons.${index}.status" 
-                     id="beacons.${index}.status" 
-                     value="${beacons.status}">
-                 <label for="beacons.${index}.status">Status</label>
-             </div>
-            <div class="form-floating col-12 col-md-9 px-1 mb-2" style="margin-left: 50px;">
-                 <input 
-                     type="text" 
-                     class="form-control form-control-sm" 
-                     name="beacons.${index}.profileLabel" 
-                     id="beacons.${index}.profileLabel" 
-                     value="${beacons.profileLabel}">
-                 <label for="beacons.${index}.profileLabel">Profile Label</label>
-             </div>
         `;
         beaconContainer.appendChild(beaconElement);
     });
@@ -199,6 +216,7 @@ function loadSettings(settings) {
     document.getElementById("standingUpdateTime").value                 = settings.other.standingUpdateTime;
     document.getElementById("sendAltitude").checked                     = settings.other.sendAltitude ;
     document.getElementById("disableGPS").checked                       = settings.other.disableGPS;
+    document.getElementById("cadActive").checked                        = settings.other.cadActive;
     document.getElementById("email").value                              = settings.other.email;
     document.getElementById("logLevel").value                           = settings.other.logLevel;
 
@@ -213,8 +231,8 @@ function loadSettings(settings) {
     // BLUETOOTH
     document.getElementById("bluetooth.active").checked                 = settings.bluetooth.active;
     document.getElementById("bluetooth.deviceName").value               = settings.bluetooth.deviceName;
-    document.getElementById("bluetooth.useBLE").checked                 = settings.bluetooth.useBLE;
-    document.getElementById("bluetooth.useKISS").checked                = settings.bluetooth.useKISS;
+    document.getElementById("bluetooth.useBLE").value                   = settings.bluetooth.useBLE ? "1" : "0";
+    document.getElementById("bluetooth.useKISS").value                  = settings.bluetooth.useKISS ? "1" : "0";
     BluetoothActiveCheckbox.checked = settings.bluetooth.active;
     BluetoothDeviceName.disabled    = !BluetoothActiveCheckbox.checked;
     BluetoothUseBle.disabled        = !BluetoothActiveCheckbox.checked;
@@ -231,7 +249,7 @@ function loadSettings(settings) {
         const regionLabel = LORA_REGION_LABELS[index] ? ` ${LORA_REGION_LABELS[index]}` : "";
 
         loraElement.innerHTML = `
-            <div class="col-3 col-md-2 px-1 mb-2 d-flex align-items-center">
+            <div class="col-12 px-1 mb-1 d-flex align-items-center">
                 <strong>${index + 1})${regionLabel}</strong> <!-- Adding numbering here -->
             </div>
             <div class="form-floating col-6 col-md-3 px-1 mb-2">
@@ -240,6 +258,9 @@ function loadSettings(settings) {
                     class="form-control form-control-sm" 
                     name="lora.${index}.frequency" 
                     id="lora.${index}.frequency" 
+                    min="137000000"
+                    max="1020000000"
+                    required
                     value="${lora.frequency}">
                 <label for="lora.${index}.frequency">Frequency</label>
             </div>
@@ -251,7 +272,8 @@ function loadSettings(settings) {
                     id="lora.${index}.spreadingFactor" 
                     value="${lora.spreadingFactor}"
                     min="7"
-                    max="12">
+                    max="12"
+                    required>
                 <label for="lora.${index}.spreadingFactor">SF</label>
             </div>
             <div class="form-floating col-4 col-md-2 px-1 mb-2">
@@ -262,7 +284,8 @@ function loadSettings(settings) {
                     id="lora.${index}.codingRate4" 
                     value="${lora.codingRate4}"
                     min="5"
-                    max="8">
+                    max="8"
+                    required>
                 <label for="lora.${index}.codingRate4">CR4</label>
             </div>
             <div class="form-floating col-4 col-md-2 px-1 mb-2">
@@ -273,8 +296,21 @@ function loadSettings(settings) {
                     id="lora.${index}.signalBandwidth" 
                     value="${lora.signalBandwidth}"
                     min="62500"
-                    max="500000">
+                    max="500000"
+                    required>
                 <label for="lora.${index}.signalBandwidth">BW</label>
+            </div>
+            <div class="form-floating col-4 col-md-2 px-1 mb-2">
+                <input
+                    type="number"
+                    class="form-control form-control-sm"
+                    name="lora.${index}.power"
+                    id="lora.${index}.power"
+                    value="${lora.power}"
+                    min="2"
+                    max="22"
+                    required>
+                <label for="lora.${index}.power">Power (dBm)</label>
             </div>
         `;
         loraContainer.appendChild(loraElement);
@@ -354,6 +390,7 @@ function loadSettings(settings) {
     pttPostDelayInput.disabled  = !pttTriggerCheckbox.checked;
     pttPinInput.disabled        = !pttTriggerCheckbox.checked;
 
+    clampOutOfRangeInputs();
 }
 
 function showToast(message) {
@@ -362,6 +399,34 @@ function showToast(message) {
     el.querySelector('.toast-body').innerHTML = message;
 
     (new bootstrap.Toast(el)).show();
+}
+
+function clampOutOfRangeInputs() {
+    const fixed = [];
+
+    document.querySelectorAll("#configuration input[type=number]").forEach((el) => {
+        if (el.disabled || el.value === "") return;
+
+        const value = parseFloat(el.value);
+        if (isNaN(value)) return;
+
+        const min = el.min !== "" ? parseFloat(el.min) : null;
+        const max = el.max !== "" ? parseFloat(el.max) : null;
+
+        let clamped = value;
+        if (max !== null && value > max) clamped = max;
+        if (min !== null && value < min) clamped = min;
+
+        if (clamped !== value) {
+            el.value = clamped;
+            fixed.push((el.name || el.id) + ": " + value + " &rarr; " + clamped);
+        }
+    });
+
+    if (fixed.length) {
+        showToast("Stored values outside the allowed range, adjusted:<br>" + fixed.join("<br>")
+                  + "<br><small>Save to keep them.</small>");
+    }
 }
 
 document.getElementById('reboot').addEventListener('click', function (e) {
@@ -401,8 +466,8 @@ DisplayEcoModeCheckbox.addEventListener("change", function () {
 // Bluetooth Switches
 const BluetoothActiveCheckbox   = document.querySelector('input[name="bluetooth.active"]');
 const BluetoothDeviceName       = document.querySelector('input[name="bluetooth.deviceName"]');
-const BluetoothUseBle           = document.querySelector('input[name="bluetooth.useBLE"]');
-const BluetoothUseKiss          = document.querySelector('input[name="bluetooth.useKISS"]');
+const BluetoothUseBle           = document.querySelector('select[name="bluetooth.useBLE"]');
+const BluetoothUseKiss          = document.querySelector('select[name="bluetooth.useKISS"]');
 BluetoothActiveCheckbox.addEventListener("change", function () {
     BluetoothDeviceName.disabled    = !this.checked;
     BluetoothUseBle.disabled        = !this.checked;
@@ -533,6 +598,29 @@ form.addEventListener("submit", async (event) => {
     setTimeout(checkConnection, 2000);
 });
 
+let invalidFieldReported = false;
+
+form.addEventListener("invalid", function (event) {
+    const el = event.target;
+
+    if (!invalidFieldReported) {          // only the first one: the rest would pile up toasts
+        invalidFieldReported = true;
+        setTimeout(() => { invalidFieldReported = false; }, 500);
+
+        const section = el.closest(".panel-section");
+        if (section) {
+            const link = document.querySelector('.side-link[data-target="' + section.id + '"]');
+            if (link) link.click();       // reuses the sidebar switcher
+        }
+
+        showToast("<b>" + (el.name || el.id) + "</b>: " + (el.validationMessage || "invalid value"));
+
+        setTimeout(() => {
+            el.focus();
+            el.scrollIntoView({ block: "center", behavior: "smooth" });
+        }, 0);
+    }
+}, true);
 
 fetchSettings();
 applyCapabilities();

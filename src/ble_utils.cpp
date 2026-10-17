@@ -1,4 +1,4 @@
-/* Copyright (C) 2025 Ricardo Guzman - CA2RXU
+/* Copyright (C) 2026 Ricardo Guzman - CA2RXU
  *
  * This file is part of LoRa APRS Tracker.
  *
@@ -151,6 +151,9 @@ class MyServerCallbacks : public NimBLEServerCallbacks {
         }
 
         bluetoothConnected = true;
+        #ifdef RPC_MicroTracker
+            digitalWrite(13, LOW);    // Led BT/BLE
+        #endif
         // peer_id_addr is the resolved identity address, which for a first-time connection
         // using a private/random address may not be resolved yet at this point; peer_ota_addr
         // is the address actually used over the air and is always valid here, so log both.
@@ -177,6 +180,9 @@ class MyServerCallbacks : public NimBLEServerCallbacks {
         const std::string peerAddress = NimBLEAddress(desc->peer_id_addr).toString();
         logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "BLE",
                    "Client disconnected: %s; restarting advertising", peerAddress.c_str());
+        #ifdef RPC_MicroTracker
+            digitalWrite(13, HIGH);    // Led BT/BLE
+        #endif
         pServer->startAdvertising();
     }
 

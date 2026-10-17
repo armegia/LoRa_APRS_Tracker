@@ -1,4 +1,4 @@
-/* Copyright (C) 2025 Ricardo Guzman - CA2RXU
+/* Copyright (C) 2026 Ricardo Guzman - CA2RXU
  *
  * This file is part of LoRa APRS Tracker.
  *
@@ -121,6 +121,7 @@ bool Configuration::writeFile() {
         data["other"]["standingUpdateTime"]         = standingUpdateTime;
         data["other"]["sendAltitude"]               = sendAltitude;
         data["other"]["disableGPS"]                 = disableGPS;
+        data["other"]["cadActive"]                  = cadActive;
         data["other"]["email"]                      = email;
         data["other"]["logLevel"]                   = logLevel;
 
@@ -277,6 +278,7 @@ bool Configuration::readFile() {
             data["other"]["standingUpdateTime"].isNull() ||
             data["other"]["sendAltitude"].isNull() ||
             data["other"]["disableGPS"].isNull() ||
+            data["other"]["cadActive"].isNull() ||
             data["other"]["email"].isNull() ||
             data["other"]["logLevel"].isNull()) needsRewrite = true;
         simplifiedTrackerMode           = data["other"]["simplifiedTrackerMode"] | false;
@@ -287,6 +289,7 @@ bool Configuration::readFile() {
         standingUpdateTime              = data["other"]["standingUpdateTime"] | 15;
         sendAltitude                    = data["other"]["sendAltitude"] | true;
         disableGPS                      = data["other"]["disableGPS"] | false;
+        cadActive                       = data["other"]["cadActive"] | true;
         email                           = data["other"]["email"] | "";
         const int configuredLogLevel    = data["other"]["logLevel"] | (int)logging::LoggerLevel::LOGGER_LEVEL_INFO;
         if (!logging::LoggerLevel::isValidValue(configuredLogLevel)) needsRewrite = true;
@@ -416,6 +419,7 @@ void Configuration::setDefaultValues() {
     standingUpdateTime              = 15;
     sendAltitude                    = true;
     disableGPS                      = false;
+    cadActive                       = true;
     email                           = "";
     logLevel                        = (int)logging::LoggerLevel::LOGGER_LEVEL_INFO;
 

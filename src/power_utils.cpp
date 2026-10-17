@@ -1,4 +1,4 @@
-/* Copyright (C) 2025 Ricardo Guzman - CA2RXU
+/* Copyright (C) 2026 Ricardo Guzman - CA2RXU
  *
  * This file is part of LoRa APRS Tracker.
  *
@@ -65,7 +65,7 @@ namespace POWER_Utils {
 
     #ifdef VEXT_CTRL
         void vext_ctrl_ON() {
-            #if defined(HELTEC_V3_GPS) || defined(HELTEC_V3_TNC) || defined(HELTEC_WIRELESS_TRACKER) || defined(HELTEC_WSL_V3_GPS_DISPLAY)
+            #if defined(HELTEC_V3_GPS) || defined(HELTEC_V3_TNC) || defined(HELTEC_WIRELESS_TRACKER) || defined(HELTEC_WSL_V3_GPS_DISPLAY) || defined(HELTEC_WSL_V3_TNC)
                 digitalWrite(VEXT_CTRL, HIGH);
             #endif
             #if defined(HELTEC_V3_2_GPS) || defined(HELTEC_V3_2_TNC)
@@ -74,7 +74,7 @@ namespace POWER_Utils {
         }
 
         void vext_ctrl_OFF() {
-            #if defined(HELTEC_V3_GPS) || defined(HELTEC_V3_TNC) || defined(HELTEC_WIRELESS_TRACKER) || defined(HELTEC_WSL_V3_GPS_DISPLAY)
+            #if defined(HELTEC_V3_GPS) || defined(HELTEC_V3_TNC) || defined(HELTEC_WIRELESS_TRACKER) || defined(HELTEC_WSL_V3_GPS_DISPLAY) || defined(HELTEC_WSL_V3_TNC)
                 digitalWrite(VEXT_CTRL, LOW);
             #endif
             #if defined(HELTEC_V3_2_GPS) || defined(HELTEC_V3_2_TNC)
@@ -89,7 +89,7 @@ namespace POWER_Utils {
             #if defined(HELTEC_WIRELESS_TRACKER) || defined(HELTEC_V3_2_GPS) || defined(HELTEC_V3_2_TNC)
                 digitalWrite(ADC_CTRL, HIGH);
             #endif
-            #if defined(HELTEC_V3_GPS) || defined(HELTEC_V3_TNC) || defined(HELTEC_V2_GPS) || defined(HELTEC_V2_GPS_915) || defined(HELTEC_V2_TNC) || defined(HELTEC_WSL_V3_GPS_DISPLAY)
+            #if defined(HELTEC_V3_GPS) || defined(HELTEC_V3_TNC) || defined(HELTEC_V2_GPS) || defined(HELTEC_V2_GPS_915) || defined(HELTEC_V2_TNC) || defined(HELTEC_WSL_V3_GPS_DISPLAY) || defined(HELTEC_WSL_V3_TNC)
                 digitalWrite(ADC_CTRL, LOW);
             #endif
         }
@@ -98,7 +98,7 @@ namespace POWER_Utils {
             #if defined(HELTEC_WIRELESS_TRACKER) || defined(HELTEC_V3_2_GPS) || defined(HELTEC_V3_2_TNC)
                 digitalWrite(ADC_CTRL, LOW);
             #endif
-            #if defined(HELTEC_V3_GPS) || defined(HELTEC_V3_TNC) || defined(HELTEC_V2_GPS) || defined(HELTEC_V2_GPS_915) || defined(HELTEC_V2_TNC) || defined(HELTEC_WSL_V3_GPS_DISPLAY)
+            #if defined(HELTEC_V3_GPS) || defined(HELTEC_V3_TNC) || defined(HELTEC_V2_GPS) || defined(HELTEC_V2_GPS_915) || defined(HELTEC_V2_TNC) || defined(HELTEC_WSL_V3_GPS_DISPLAY) || defined(HELTEC_WSL_V3_TNC)
                 digitalWrite(ADC_CTRL, HIGH);
             #endif
         }
@@ -234,19 +234,31 @@ namespace POWER_Utils {
             while (1);
         }
 
-        if (Config.notification.ledTx && Config.notification.ledTxPin >= 0) {
+        #ifdef RPC_MicroTracker
+            Config.notification.ledTxPin = LED_TX;
             pinMode(Config.notification.ledTxPin, OUTPUT);
-        } else if (Config.notification.ledTx && Config.notification.ledTxPin < 0) {
-            logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "PINOUT", "Led Tx Pin not defined");
-            while (1);
-        }
+            digitalWrite(Config.notification.ledTxPin, HIGH);
+        #else
+            if (Config.notification.ledTx && Config.notification.ledTxPin >= 0) {
+                pinMode(Config.notification.ledTxPin, OUTPUT);
+            } else if (Config.notification.ledTx && Config.notification.ledTxPin < 0) {
+                logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "PINOUT", "Led Tx Pin not defined");
+                while (1);
+            }
+        #endif
 
-        if (Config.notification.ledMessage && Config.notification.ledMessagePin >= 0) {
+        #ifdef RPC_MicroTracker
+            Config.notification.ledMessagePin = LED_RX;
             pinMode(Config.notification.ledMessagePin, OUTPUT);
-        } else if (Config.notification.ledMessage && Config.notification.ledMessagePin < 0) {
-            logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "PINOUT", "Led Message Pin not defined");
-            while (1);
-        }
+            digitalWrite(Config.notification.ledMessagePin, HIGH);
+        #else
+            if (Config.notification.ledMessage && Config.notification.ledMessagePin >= 0) {
+                pinMode(Config.notification.ledMessagePin, OUTPUT);
+            } else if (Config.notification.ledMessage && Config.notification.ledMessagePin < 0) {
+                logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "PINOUT", "Led Message Pin not defined");
+                while (1);
+            }
+        #endif
 
         if (Config.notification.ledFlashlight && Config.notification.ledFlashlightPin >= 0) {
             pinMode(Config.notification.ledFlashlightPin, OUTPUT);
@@ -262,6 +274,12 @@ namespace POWER_Utils {
             logger.log(logging::LoggerLevel::LOGGER_LEVEL_WARN, "PINOUT", "PTT Pin not defined");
             while (1);
         }
+        #ifdef RPC_MicroTracker
+            pinMode(LED_BT, OUTPUT);        // Led BT/BLE
+            digitalWrite(LED_BT, HIGH);
+            pinMode(LED_WIFI, OUTPUT);      // Led WiFI
+            digitalWrite(LED_WIFI, HIGH);
+        #endif
     }
 
     bool begin(TwoWire &port) {
@@ -305,7 +323,10 @@ namespace POWER_Utils {
                 PMU.setDC1Voltage(3300);
                 PMU.enableDC1();
                 #ifdef TTGO_T_Beam_S3_SUPREME_V3
-                    PMU.setALDO1Voltage(3300);
+                    PMU.setALDO1Voltage(3300);      // BME280, QMC6310, QMI8658, OLED
+                    PMU.enableALDO1();
+                    PMU.setALDO2Voltage(3300);      // sensors/OLED I2C + RTC PCF8563 (must stay on)
+                    PMU.enableALDO2();
                 #endif
                 PMU.setButtonBatteryChargeVoltage(3300);
                 PMU.enableButtonBatteryCharge();
@@ -392,7 +413,7 @@ namespace POWER_Utils {
             Wire.begin(BOARD_I2C_SDA, BOARD_I2C_SCL);
         #endif
 
-        #if defined(HELTEC_V3_GPS) || defined(HELTEC_V3_TNC) || defined(HELTEC_V3_2_GPS) || defined(HELTEC_V3_2_TNC) || defined(HELTEC_WSL_V3_GPS_DISPLAY)
+        #if defined(HELTEC_V3_GPS) || defined(HELTEC_V3_TNC) || defined(HELTEC_V3_2_GPS) || defined(HELTEC_V3_2_TNC) || defined(HELTEC_WSL_V3_GPS_DISPLAY) || defined(HELTEC_WSL_V3_TNC)
             Wire1.begin(BOARD_I2C_SDA, BOARD_I2C_SCL);
         #endif
 
@@ -410,11 +431,6 @@ namespace POWER_Utils {
 
             delay(500);
             Wire.begin(BOARD_I2C_SDA, BOARD_I2C_SCL);
-        #endif
-
-        #if defined(TTGO_T_BEAM_1W)
-            pinMode(FAN_CTRL_PIN, OUTPUT);
-            digitalWrite(FAN_CTRL_PIN, HIGH);
         #endif
     }
 

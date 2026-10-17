@@ -1,4 +1,4 @@
-/* Copyright (C) 2025 Ricardo Guzman - CA2RXU
+/* Copyright (C) 2026 Ricardo Guzman - CA2RXU
  * 
  * This file is part of LoRa APRS Tracker.
  * 
@@ -22,6 +22,7 @@
     //  LoRa Radio
     #define HAS_SX1268
     #define HAS_1W_LORA
+    #define HAS_TCXO
     #define RADIO_SCLK_PIN      18
     #define RADIO_MISO_PIN      19
     #define RADIO_MOSI_PIN      23

@@ -1,4 +1,4 @@
-/* Copyright (C) 2025 Ricardo Guzman - CA2RXU
+/* Copyright (C) 2026 Ricardo Guzman - CA2RXU
  *
  * This file is part of LoRa APRS Tracker.
  *
@@ -50,6 +50,7 @@ ____________________________________________________________________*/
 #include "configuration.h"
 #include "battery_utils.h"
 #include "station_utils.h"
+#include "thermal_utils.h"
 #include "board_pinout.h"
 #include "button_utils.h"
 #include "power_utils.h"
@@ -69,8 +70,8 @@ ____________________________________________________________________*/
 #endif
 
 
-String      versionDate             = "2026-09-05";
-String      versionNumber           = "2.4.3.2";
+String      versionDate             = "2026-10-17";
+String      versionNumber           = "4.0.1";
 // Configuration logs while its global constructor loads SPIFFS, so the logger must be
 // constructed first. But logging is useless if Serial itself isn't begun yet: on this Arduino
 // core, writing to Serial before Serial.begin() is a silent no-op at the driver level (the
@@ -143,6 +144,9 @@ void setup() {
     POWER_Utils::setup();
     displaySetup();
     POWER_Utils::externalPinSetup();
+    #ifdef FAN_CTRL_PIN
+        THERMAL_Utils::setup();
+    #endif
 
     STATION_Utils::loadIndex(0);    // callsign Index
     STATION_Utils::loadIndex(1);    // lora freq settins Index
@@ -189,6 +193,15 @@ void setup() {
     logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "Main", "Smart Beacon is: %s", Utils::getSmartBeaconState().c_str());
     logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "Main", "Setup Done!");
     menuDisplay = 0;
+    #ifdef RPC_MicroTracker
+        pinMode(BUTTON_AP_PIN, INPUT);
+        delay(50);
+        if (digitalRead(BUTTON_AP_PIN) == LOW) {
+            Config.wifiAP.active = true;
+            Config.writeFile();
+            ESP.restart();
+        }
+    #endif
 }
 
 void loop() {
@@ -207,6 +220,9 @@ void loop() {
     SMARTBEACON_Utils::checkState();
 
     BATTERY_Utils::monitor();
+    #ifdef FAN_CTRL_PIN
+        THERMAL_Utils::monitor();
+    #endif
     Utils::checkDisplayEcoMode();
 
     #ifdef BUTTON_PIN
