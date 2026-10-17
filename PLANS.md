@@ -17,6 +17,29 @@ Items 1-4 below (per that priority) are all done and flashed as of 2026-09-04. M
 found during the item-4 audit (battery/GPS inert toggles, the LoRa `power`-field ambiguity) are
 being deliberately left alone, not treated as bugs to fix.
 
+## Upstream 4.0.1 merged on top of the BLE work (2026-10-17)
+
+Branch `merge/upstream-4.0.1-ble` = local `main` (BLE bonding + logger + capabilities) merged
+with `origin/main` @ `5bb2adc` (upstream v4.0.1, 35 commits). Upstream did **not** touch BLE
+pairing/security (only RPC_MicroTracker status LEDs in the BLE/BT callbacks, carried into our
+restructured callbacks). Upstream independently adopted the same `HAS_BT_CLASSIC` guard on
+`useBLE` in the POST handler, but switched Bluetooth Type / Protocol from checkboxes to
+`<select>` (values 1/0), so the merged POST uses `getParamIntSafe(...) == 1`, not `hasParam`.
+
+Web UI: upstream fully redesigned `index.html` (sidebar + sections). Resolution was "take
+upstream's file, re-apply ours": log-level select under Simplified Tracker Mode,
+`data-requires-capability="hasBTClassic"` + fallback note on Bluetooth Type, and "Clear BLE
+bonds" moved from the old navbar Device menu to an Administration-section row gated on
+`hasBLE`. LoRa region label now sits on its own row (upstream added a Power column).
+
+Supreme-relevant upstream changes: `HAS_TCXO` now defined → `setDio2AsRfSwitch()` +
+`setTCXO(1.8)` (previously neither; RadioLib default 1.6 V TCXO); ALDO1/ALDO2 explicitly
+enabled; LoRa `power` is now literal dBm via `LoRa_Utils::validPower()` (resolves the
+"power-field ambiguity" noted above — but the old code sent `power + 2`, so a saved 20 used to
+mean 22 dBm and now means 20 dBm); CAD listen-before-talk (`other.cadActive`, default on,
+blocks TX up to 10 s); GPS baud autodetect (`/gps_baud.dat`); APRSPacketLib 1.0.4 → 1.0.10.
+First boot after flashing rewrites the config once (new `cadActive` field) and reboots.
+
 ## Known issues — documented, explicitly NOT being fixed yet
 
 **TNC2 mode over BLE doesn't work in practice (2026-09-04).** The firmware does implement it —
