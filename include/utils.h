@@ -31,6 +31,8 @@ namespace Utils {
     void    checkStatus();
     void    checkDisplayEcoMode();
     String  getSmartBeaconState();
+    const char *getResetReason();
+    int     getRomResetReason();
     void    checkFlashlight();
     void    i2cScannerForPeripherals();
 

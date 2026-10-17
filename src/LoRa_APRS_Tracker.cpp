@@ -39,6 +39,7 @@ ____________________________________________________________________*/
 
 #include <BluetoothSerial.h>
 #include <APRSPacketLib.h>
+#include <esp_system.h>
 #include <TinyGPS++.h>
 #include <Arduino.h>
 #include <logger.h>
@@ -189,6 +190,10 @@ void setup() {
     esp_random();
     randomSeed(esp_random());
 
+    // Logged at the end of setup (~5 s) rather than at boot: after a chip-level reset the native
+    // USB port re-enumerates and the first ~0.8 s of output never reaches the serial monitor.
+    // Kept before lowerCpuFrequency(): native-USB output right after the clock change can drop bytes.
+    logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "Main", "Reset reason: %s (esp %d, rom rst:0x%02X)", Utils::getResetReason(), (int)esp_reset_reason(), Utils::getRomResetReason());
     POWER_Utils::lowerCpuFrequency();
     logger.log(logging::LoggerLevel::LOGGER_LEVEL_DEBUG, "Main", "Smart Beacon is: %s", Utils::getSmartBeaconState().c_str());
     logger.log(logging::LoggerLevel::LOGGER_LEVEL_INFO, "Main", "Setup Done!");

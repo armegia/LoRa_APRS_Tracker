@@ -17,6 +17,8 @@
  */
 
 #include <APRSPacketLib.h>
+#include <esp_rom_sys.h>
+#include <esp_system.h>
 #include <logger.h>
 #include <Wire.h>
 #include "configuration.h"
@@ -141,6 +143,32 @@ namespace Utils {
     String getSmartBeaconState() {
         if (currentBeacon->smartBeaconActive) return "On";
         return "Off";
+    }
+
+    const char *getResetReason() {      // why the chip last restarted (logged once per boot)
+        switch (esp_reset_reason()) {
+            case ESP_RST_POWERON:   return "power-on / RST button";
+            case ESP_RST_EXT:       return "external pin";
+            case ESP_RST_SW:        return "software restart";
+            case ESP_RST_PANIC:     return "crash (panic)";
+            case ESP_RST_INT_WDT:   return "interrupt watchdog";
+            case ESP_RST_TASK_WDT:  return "task watchdog";
+            case ESP_RST_WDT:       return "other watchdog";
+            case ESP_RST_DEEPSLEEP: return "wake from deep sleep";
+            case ESP_RST_BROWNOUT:  return "brownout (low voltage)";
+            case ESP_RST_SDIO:      return "SDIO";
+            default:
+                #if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
+                    // esp_reset_reason() has no value for these on this core: ROM 0x15/0x16 =
+                    // reset requested over native USB (esptool, or a serial port closed with DTR/RTS up)
+                    if (getRomResetReason() == 0x15 || getRomResetReason() == 0x16) return "native USB reset (esptool / DTR-RTS)";
+                #endif
+                return "unknown";
+        }
+    }
+
+    int getRomResetReason() {           // same code the ROM prints at boot as "rst:0x.."
+        return (int)esp_rom_get_reset_reason(0);
     }
 
     void checkFlashlight() {
